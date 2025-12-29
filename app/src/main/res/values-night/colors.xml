@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pill Colors (Dark Mode) -->
+    <color name="pillDateBg">#37474F</color>
+    <color name="pillDateText">#CFD8DC</color>
+
+    <color name="pillMobileBg">#0D47A1</color>
+    <color name="pillMobileText">#BBDEFB</color>
+
+    <color name="pillWifiBg">#1B5E20</color>
+    <color name="pillWifiText">#C8E6C9</color>
+
+    <color name="pillTotalBg">#4A148C</color>
+    <color name="pillTotalText">#E1BEE7</color>
+</resources>

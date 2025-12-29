@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Netspeed Lite</string>
+
+    <!-- Menu / Dialog -->
+    <string name="settings">Notification Settings</string>
+    <string name="close">Close</string>
+
+    <!-- Messages -->
+    <string name="data_reset">Data Usage Reset</string>
+
+</resources>

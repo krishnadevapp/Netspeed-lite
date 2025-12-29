@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="colorBackground">#F3F5F7</color>
+
+    <color name="colorPrimary">#1A237E</color>
+    <color name="colorPrimaryDark">#000051</color>
+    <color name="colorAccent">#534BAE</color>
+
+    <color name="colorHeaderRow">#283593</color>
+    <color name="colorFooter">#1A237E</color>
+
+    <color name="colorDivider">#CFD8DC</color>
+
+    <color name="textPrimary">#263238</color>
+    <color name="textSecondary">#546E7A</color>
+    <color name="textOnDark">#FFFFFF</color>
+    <color name="toolbarGrey">#1A237E</color>
+
+    <!-- Pill Colors (Light Mode) -->
+    <color name="pillDateBg">#ECEFF1</color> <!-- Darker background -->
+    <color name="pillDateText">#263238</color> <!-- Darker text -->
+    
+    <color name="pillMobileBg">#E3F2FD</color>
+    <color name="pillMobileText">#1565C0</color>
+    
+    <color name="pillWifiBg">#E8F5E9</color>
+    <color name="pillWifiText">#2E7D32</color>
+    
+    <color name="pillTotalBg">#F3E5F5</color>
+    <color name="pillTotalText">#6A1B9A</color>
+
+</resources>

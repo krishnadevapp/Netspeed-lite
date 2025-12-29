@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ================================================= -->
+    <!-- Base Theme -->
+    <!-- ================================================= -->
+    <style name="Base.Theme.DataUsageMeterLite"
+        parent="Theme.Material3.DayNight.NoActionBar">
+
+        <!-- Primary branding -->
+        <item name="colorPrimary">#1A237E</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+
+        <!-- Secondary branding -->
+        <item name="colorSecondary">#3949AB</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+
+        <!-- Status bar -->
+        <item name="android:statusBarColor">#1A237E</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Navigation bar -->
+        <item name="android:navigationBarColor">?android:attr/colorBackground</item>
+
+        <!-- Overflow menu icon -->
+        <item name="actionOverflowButtonStyle">
+            @style/WhiteOverflowButtonStyle
+        </item>
+
+        <!-- Disable title/action bar -->
+        <item name="windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
+
+    </style>
+
+    <!-- ================================================= -->
+    <!-- App Theme -->
+    <!-- ================================================= -->
+    <style name="Theme.DataUsageMeterLite"
+        parent="Base.Theme.DataUsageMeterLite" />
+
+    <!-- ================================================= -->
+    <!-- White overflow menu -->
+    <!-- ================================================= -->
+    <style name="WhiteOverflowButtonStyle"
+        parent="Widget.AppCompat.ActionButton.Overflow">
+        <item name="android:tint">#FFFFFF</item>
+    </style>
+
+</resources>
