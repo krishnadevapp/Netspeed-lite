@@ -14,7 +14,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="20dp"
         android:background="?attr/colorSurfaceVariant">
 
         <LinearLayout
@@ -46,7 +48,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Version 1.0.3"
+                    android:text="Version 1.0.1"
                     android:textSize="13sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginTop="2dp"/>
@@ -61,17 +63,20 @@
         android:background="@color/colorDivider"/>
 
     <!-- CONTENT -->
+    <!-- Added ID and clipToPadding=false for dynamic inset handling -->
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/settingsScrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:clipToPadding="false">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
-            android:paddingBottom="24dp">
+            android:paddingBottom="120dp"> <!-- SIGNIFICANTLY Increased bottom padding -->
 
             <!-- Notification Settings -->
             <TextView
@@ -231,7 +236,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- SECTION: Appearance (Fixed) -->
+            <!-- SECTION: Appearance (Fixed - Toggle Buttons) -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -257,50 +262,49 @@
                     android:id="@+id/radioGroupTheme"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="8dp">
+                    android:orientation="horizontal"
+                    android:padding="4dp">
 
                     <RadioButton
                         android:id="@+id/radioThemeSystem"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="System Default"
-                        android:textSize="15sp"
+                        android:layout_weight="1"
+                        android:text="System"
+                        android:textSize="14sp"
+                        android:gravity="center"
                         android:paddingVertical="10dp"
-                        android:buttonTint="@color/selector_radio_tint"
-                        android:textColor="?android:attr/textColorPrimary"/>
-                    
-                    <View 
-                        android:layout_width="match_parent" 
-                        android:layout_height="1dp" 
-                        android:background="@color/colorDivider"
-                        android:layout_marginHorizontal="12dp"/>
+                        android:button="@null"
+                        android:background="@drawable/selector_toggle_bg"
+                        android:textColor="@color/selector_toggle_text"
+                        android:layout_marginEnd="4dp"/>
 
                     <RadioButton
                         android:id="@+id/radioThemeLight"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
                         android:text="Light"
-                        android:textSize="15sp"
+                        android:textSize="14sp"
+                        android:gravity="center"
                         android:paddingVertical="10dp"
-                        android:buttonTint="@color/selector_radio_tint"
-                        android:textColor="?android:attr/textColorPrimary"/>
-
-                    <View 
-                        android:layout_width="match_parent" 
-                        android:layout_height="1dp" 
-                        android:background="@color/colorDivider"
-                        android:layout_marginHorizontal="12dp"/>
+                        android:button="@null"
+                        android:background="@drawable/selector_toggle_bg"
+                        android:textColor="@color/selector_toggle_text"
+                        android:layout_marginEnd="4dp"/>
 
                     <RadioButton
                         android:id="@+id/radioThemeDark"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
                         android:text="Dark"
-                        android:textSize="15sp"
+                        android:textSize="14sp"
+                        android:gravity="center"
                         android:paddingVertical="10dp"
-                        android:buttonTint="@color/selector_radio_tint"
-                        android:textColor="?android:attr/textColorPrimary"/>
+                        android:button="@null"
+                        android:background="@drawable/selector_toggle_bg"
+                        android:textColor="@color/selector_toggle_text"/>
 
                 </RadioGroup>
             </com.google.android.material.card.MaterialCardView>
@@ -350,6 +354,67 @@
                 android:textColor="#D32F2F"
                 android:textSize="15sp"/>
             
+            <!-- SUPPORT & FEEDBACK -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/support_feedback"
+                android:textSize="12sp"
+                android:textAllCaps="true"
+                android:textColor="?android:attr/textColorSecondary"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="12dp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.05"/>
+
+            <LinearLayout
+                android:id="@+id/btnRateUs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingVertical="14dp"
+                android:paddingHorizontal="4dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_star_rate"
+                    android:layout_marginEnd="16dp"
+                    app:tint="#FBC02D"/> <!-- Updated tint to Material Yellow 700 -->
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/rate_us"
+                        android:textSize="15sp"
+                        android:textColor="?android:attr/textColorPrimary"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/rate_us_subtitle"
+                        android:textSize="13sp"
+                        android:textColor="?android:attr/textColorSecondary"/>
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="?android:attr/textColorSecondary"/>
+
+            </LinearLayout>
+
             <!-- Hidden Close Button (Removed from Bottom) -->
             <TextView
                 android:id="@+id/btnClose"

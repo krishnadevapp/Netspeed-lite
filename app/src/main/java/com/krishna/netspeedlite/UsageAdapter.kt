@@ -12,9 +12,6 @@ import java.util.Locale
 class UsageAdapter(private var usageList: List<DailyUsage> = emptyList()) :
     RecyclerView.Adapter<UsageAdapter.UsageViewHolder>() {
 
-    /**
-     * ViewHolder holds the reference to the row layout (item_usage_row.xml)
-     */
     class UsageViewHolder(val binding: ItemUsageRowBinding) : RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): UsageViewHolder {
@@ -26,14 +23,11 @@ class UsageAdapter(private var usageList: List<DailyUsage> = emptyList()) :
         val item = usageList[position]
         val context = holder.itemView.context
 
-        // 1. Fetch user preference for units (MB only or Auto)
         val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val showInMbOnly = prefs.getBoolean("unit_in_mb", false)
 
-        // 2. Format the Date (e.g., 28 Dec, 2025)
         val dateFormat = SimpleDateFormat("dd MMM, yyyy", Locale.US)
 
-        // 3. Bind data to the UI elements
         holder.binding.apply {
             tvDate.text = dateFormat.format(Date(item.date))
             tvMobile.text = formatData(item.mobileBytes, showInMbOnly)
@@ -44,21 +38,14 @@ class UsageAdapter(private var usageList: List<DailyUsage> = emptyList()) :
 
     override fun getItemCount() = usageList.size
 
-    /**
-     * Call this from MainActivity to refresh the list
-     */
     fun updateData(newList: List<DailyUsage>) {
         usageList = newList
         notifyDataSetChanged()
     }
 
-    /**
-     * Formats bytes into human-readable strings (KB, MB, GB)
-     */
     private fun formatData(bytes: Long, showInMbOnly: Boolean): String {
         if (showInMbOnly) {
-            val mb = bytes / (1024f * 1024f)
-            return String.format(Locale.US, "%.2f MB", mb)
+            return String.format(Locale.US, "%.2f MB", bytes / (1024f * 1024f))
         }
 
         return when {

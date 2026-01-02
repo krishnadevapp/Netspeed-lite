@@ -17,10 +17,10 @@ android {
         targetSdk = 35
 
         // ⭐ UPDATED: Version Code must be higher for Play Store update
-        versionCode = 8
+        versionCode = 11
 
         // ⭐ UPDATED: Version Name to reflect new release
-        versionName = "8.0.1"
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -61,6 +61,9 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+
+    // In-App Review API
+    implementation("com.google.android.play:review-ktx:2.0.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -8,7 +8,7 @@
     <color name="colorSurfaceElevated">#262B32</color>
     
     <!-- Primary / Brand (Muted) -->
-    <color name="colorPrimary">#23262E</color> <!-- Darker Surface for Header -->
+    <color name="colorPrimary">#2C323B</color> <!-- Increased Greyness -->
     <color name="colorPrimaryContainer">#262B32</color>
     
     <!-- Text (Refined for Comfort) -->
@@ -21,7 +21,7 @@
     
     <!-- Sections -->
     <color name="colorHeaderRow">#2C323B</color> <!-- Increased contrast from background for visibility -->
-    <color name="colorBottomBar">#262B32</color>
+    <color name="colorBottomBar">#2C323B</color> <!-- Increased Greyness -->
 
     <!-- Data Values (Desaturated Pastel Tones) -->
     <color name="pillMobileText">#A8C7FA</color> <!-- Google Material Blue 80 -->
@@ -33,16 +33,23 @@
     <color name="colorStroke">#353940</color>
     
     <!-- UI Controls (Explicit Definitions for Dark Mode) -->
-    <color name="radio_button_unchecked_color">#9CA3AF</color> <!-- Soft Light Grey for visibility -->
-    <color name="radio_button_checked_color">#A8C7FA</color>   <!-- Accent Blue -->
+    <color name="radio_button_unchecked_color">#E0E0E0</color>
+    <color name="radio_button_checked_color">#A8C7FA</color>
     
-    <!-- FIX: BUTTON VISIBILITY IN DARK MODE -->
-    <color name="switch_track_unchecked_color">#555960</color> <!-- Matches unchecked track -->
+    <!-- Scoped Colors for Appearance Radio Buttons -->
+    <color name="appearance_radio_checked_color">#A8C7FA</color>
+    <color name="appearance_radio_unchecked_color">#BDBDBD</color>
+    
+    <!-- Toggle Button Colors -->
+    <color name="toggle_background_checked">#A8C7FA</color>
+    
+    <!-- FIX: Increased contrast for switch tracks -->
+    <color name="switch_track_unchecked_color">#555960</color> <!-- Lighter than bg for visibility -->
     <color name="switch_thumb_color">#E2E2E5</color>
     
-    <!-- Use specific color for outline/border to ensure visibility against #191C20 -->
+    <!-- Brighter Primary Tint for ON track to contrast with dark background, but darker than thumb -->
     <color name="control_switch_track_on">#5285EA</color> 
-    <color name="control_switch_track_off">#555960</color> <!-- Visible Dark Gray -->
+    <color name="control_switch_track_off">#555960</color> <!-- Matches unchecked track -->
 
     <!-- Legacy / Unused -->
     <color name="pillDateBg">#00000000</color>
@@ -51,8 +58,4 @@
     <color name="pillWifiBg">#00000000</color>
     <color name="pillTotalBg">#00000000</color>
     
-    <!-- Compat for existing references if any -->
-    <color name="selector_switch_thumb">#E2E2E5</color>
-    <color name="selector_switch_track">#A8C7FA</color>
-    <color name="selector_radio_tint">#8E9199</color>
 </resources>

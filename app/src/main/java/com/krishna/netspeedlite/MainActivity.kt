@@ -5,11 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.usage.NetworkStatsManager
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -37,6 +39,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.play.core.review.ReviewManagerFactory
 import com.krishna.netspeedlite.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,6 +48,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -57,7 +61,6 @@ class MainActivity : AppCompatActivity() {
     private val checkAlertsRunnable = object : Runnable {
         override fun run() {
             checkDataAlerts()
-            // Schedule next check in 5 minutes while active
             checkAlertsHandler.postDelayed(this, 5 * 60 * 1000L)
         }
     }
@@ -67,13 +70,11 @@ class MainActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-        // Apply Theme immediately
         applyThemeFromPrefs()
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // UI Styling
         window.statusBarColor = ContextCompat.getColor(this, R.color.toolbarGrey)
         setSupportActionBar(binding.topAppBar)
         supportActionBar?.setDisplayShowTitleEnabled(false)
@@ -82,7 +83,6 @@ class MainActivity : AppCompatActivity() {
 
         setupPermissions()
         setupUI()
-        // Delay side panel setup to ensure layout is fully ready, although mainly synchronous
         binding.root.post {
             try {
                 setupSidePanel()
@@ -92,13 +92,14 @@ class MainActivity : AppCompatActivity() {
         }
         createNotificationChannel()
 
-        // Initial background data load
         refreshData()
 
         val showSpeed = prefs.getBoolean("show_speed", true)
         if (showSpeed) {
             startSpeedService()
         }
+        
+        recordAppOpen()
     }
 
     private fun applyThemeFromPrefs() {
@@ -129,7 +130,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_settings -> {
-                openSidePanel() // Open side panel instead of dialog
+                openSidePanel()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -141,7 +142,6 @@ class MainActivity : AppCompatActivity() {
         if (hasUsageStatsPermission()) {
             binding.btnPermission.visibility = View.GONE
             refreshData()
-            // Trigger an immediate check and start periodic checks
             checkDataAlerts()
             checkAlertsHandler.removeCallbacks(checkAlertsRunnable)
             checkAlertsHandler.post(checkAlertsRunnable)
@@ -190,7 +190,7 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = usageAdapter
-            isNestedScrollingEnabled = false // Better scrolling if inside a NestedScrollView
+            isNestedScrollingEnabled = false
         }
     }
 
@@ -200,7 +200,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSidePanel() {
         val navView = binding.navView
-        // Check for safe access to views
         if (navView.childCount == 0) return
 
         val switchShowSpeed = navView.findViewById<MaterialSwitch>(R.id.switchShowSpeed) ?: return
@@ -209,8 +208,8 @@ class MainActivity : AppCompatActivity() {
         val btnResetData = navView.findViewById<TextView>(R.id.btnResetData) ?: return
         val btnStopExit = navView.findViewById<TextView>(R.id.btnStopExit) ?: return
         val btnClose = navView.findViewById<TextView>(R.id.btnClose) ?: return
+        val btnRateUs = navView.findViewById<View>(R.id.btnRateUs) ?: return
 
-        // New Controls
         val switchDataAlert = navView.findViewById<MaterialSwitch>(R.id.switchDataAlert) ?: return
         val layoutDataLimitOptions = navView.findViewById<View>(R.id.layoutDataLimitOptions) ?: return
         val etDataLimit = navView.findViewById<TextInputEditText>(R.id.etDataLimit) ?: return
@@ -218,16 +217,11 @@ class MainActivity : AppCompatActivity() {
         val tvLimitError = navView.findViewById<TextView>(R.id.tvLimitError) ?: return
         
         val radioGroupTheme = navView.findViewById<RadioGroup>(R.id.radioGroupTheme) ?: return
-        val radioThemeSystem = navView.findViewById<RadioButton>(R.id.radioThemeSystem) ?: return
-        val radioThemeLight = navView.findViewById<RadioButton>(R.id.radioThemeLight) ?: return
-        val radioThemeDark = navView.findViewById<RadioButton>(R.id.radioThemeDark) ?: return
 
-        // Setup Unit Dropdown
         val units = arrayOf("MB", "GB")
         val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, units)
         tvUnitSelection.setAdapter(adapter)
 
-        // Load current state
         switchShowSpeed.isChecked = prefs.getBoolean("show_speed", true)
         switchShowUpDown.isChecked = prefs.getBoolean("show_up_down", false)
         switchShowWifiSignal.isChecked = prefs.getBoolean("show_wifi_signal", false)
@@ -236,7 +230,6 @@ class MainActivity : AppCompatActivity() {
         switchDataAlert.isChecked = isAlertEnabled
         layoutDataLimitOptions.visibility = if (isAlertEnabled) View.VISIBLE else View.GONE
         
-        // Load Limit and Unit
         val savedUnit = prefs.getString("selected_unit", "MB") ?: "MB"
         tvUnitSelection.setText(savedUnit, false)
 
@@ -247,18 +240,15 @@ class MainActivity : AppCompatActivity() {
             etDataLimit.setText(text)
         }
 
-        // Theme state
-        // Remove listener temporarily to avoid triggering it while setting state
         radioGroupTheme.setOnCheckedChangeListener(null)
         
         val currentTheme = prefs.getInt("theme_mode", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         when (currentTheme) {
-            AppCompatDelegate.MODE_NIGHT_NO -> radioThemeLight.isChecked = true
-            AppCompatDelegate.MODE_NIGHT_YES -> radioThemeDark.isChecked = true
-            else -> radioThemeSystem.isChecked = true
+            AppCompatDelegate.MODE_NIGHT_NO -> radioGroupTheme.check(R.id.radioThemeLight)
+            AppCompatDelegate.MODE_NIGHT_YES -> radioGroupTheme.check(R.id.radioThemeDark)
+            else -> radioGroupTheme.check(R.id.radioThemeSystem)
         }
 
-        // Existing Listeners
         switchShowSpeed.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("show_speed", isChecked).apply()
             if (isChecked) startSpeedService() else stopService(Intent(this, SpeedService::class.java))
@@ -274,7 +264,6 @@ class MainActivity : AppCompatActivity() {
             if (switchShowSpeed.isChecked) startSpeedService()
         }
 
-        // New Listeners - Data Alert
         switchDataAlert.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("daily_limit_enabled", isChecked).apply()
             layoutDataLimitOptions.visibility = if (isChecked) View.VISIBLE else View.GONE
@@ -283,7 +272,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Save Function
         fun saveLimit() {
             val rawText = etDataLimit.text.toString()
             val unit = tvUnitSelection.text.toString()
@@ -301,18 +289,14 @@ class MainActivity : AppCompatActivity() {
 
             tvLimitError.visibility = View.GONE
             
-            // Convert to MB for internal storage
             val limitMb = if (unit == "GB") rawValue * 1024f else rawValue
 
             prefs.edit()
                 .putFloat("daily_limit_mb", limitMb)
                 .putString("selected_unit", unit)
-                // RESET FLAGS ON LIMIT CHANGE to allow re-alerting if limit increased
                 .putBoolean("alert_80_triggered", false)
                 .putBoolean("alert_100_triggered", false)
                 .apply()
-                
-            // REMOVED: Immediate checkDataAlerts call to prevent spam notifications while typing
         }
 
         etDataLimit.addTextChangedListener(object : TextWatcher {
@@ -321,46 +305,30 @@ class MainActivity : AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
         
-        // Add OnFocusChangeListener to check limit only when user finishes typing
         etDataLimit.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
-                // When focus is lost (keyboard closed or user taps away), check alerts once
                 checkDataAlerts()
             }
         }
 
         tvUnitSelection.setOnItemClickListener { _, _, _, _ -> 
             saveLimit() 
-            checkDataAlerts() // Check immediately on unit change as it's a discrete action
+            checkDataAlerts()
         }
 
-        // New Listeners - Theme
         radioGroupTheme.setOnCheckedChangeListener { group, checkedId ->
-            if (!group.isPressed) {
-               // return@setOnCheckedChangeListener // This might prevent loop if triggered by system
-            }
-
             val mode = when (checkedId) {
                 R.id.radioThemeLight -> AppCompatDelegate.MODE_NIGHT_NO
                 R.id.radioThemeDark -> AppCompatDelegate.MODE_NIGHT_YES
                 else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             }
             
-            // Only apply if changed
             if (prefs.getInt("theme_mode", -100) != mode) {
-                // Save and Apply
                 prefs.edit().putInt("theme_mode", mode).apply()
-                
-                // Add a small delay or post to avoid immediate recreation loops in some scenarios
-                group.post {
-                     if (group.isAttachedToWindow) {
-                        AppCompatDelegate.setDefaultNightMode(mode)
-                     }
-                }
+                group.post { AppCompatDelegate.setDefaultNightMode(mode) }
             }
         }
 
-        // Actions
         btnResetData.setOnClickListener {
             prefs.edit().putLong("reset_timestamp", System.currentTimeMillis()).apply()
             Toast.makeText(this, "Data Usage Reset", Toast.LENGTH_SHORT).show()
@@ -376,6 +344,10 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.END)
         }
+
+        btnRateUs.setOnClickListener {
+            showRateUsFlow()
+        }
     }
 
     private fun refreshData() {
@@ -386,10 +358,10 @@ class MainActivity : AppCompatActivity() {
             val calendar = Calendar.getInstance()
             val resetTimestamp = prefs.getLong("reset_timestamp", 0L)
 
+            var totalMobile = 0L
+            var totalWifi = 0L
             var last7DaysMobile = 0L
             var last7DaysWifi = 0L
-            var last30DaysMobile = 0L
-            var last30DaysWifi = 0L
 
             for (i in 0 until 30) {
                 calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -414,8 +386,8 @@ class MainActivity : AppCompatActivity() {
 
                 usageList.add(DailyUsage(startTime, mobile, wifi, mobile + wifi))
 
-                last30DaysMobile += mobile
-                last30DaysWifi += wifi
+                totalMobile += mobile
+                totalWifi += wifi
                 if (i < 7) {
                     last7DaysMobile += mobile
                     last7DaysWifi += wifi
@@ -426,12 +398,11 @@ class MainActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 usageAdapter.updateData(usageList)
-                updateUIStats(last7DaysMobile, last7DaysWifi, last30DaysMobile, last30DaysWifi)
+                updateUIStats(last7DaysMobile, last7DaysWifi, totalMobile, totalWifi)
             }
         }
     }
     
-    // Helper for Alert Check
     private fun getTodayMobileUsage(): Long {
         val calendar = Calendar.getInstance()
         calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -459,7 +430,6 @@ class MainActivity : AppCompatActivity() {
             val todayUsageBytes = getTodayMobileUsage()
             val usageMb = todayUsageBytes / (1024f * 1024f)
 
-            // Reset Logic
             val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val lastChecked = prefs.getString("last_alert_date", "")
 
@@ -471,7 +441,6 @@ class MainActivity : AppCompatActivity() {
                     .apply()
             }
 
-            // Reload flags after potential reset
             val alert80 = prefs.getBoolean("alert_80_triggered", false)
             val alert100 = prefs.getBoolean("alert_100_triggered", false)
 
@@ -492,7 +461,7 @@ class MainActivity : AppCompatActivity() {
     private fun showNotification(title: String, message: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                return // Permission not granted
+                return
             }
         }
 
@@ -502,7 +471,7 @@ class MainActivity : AppCompatActivity() {
         val pendingIntent: PendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val builder = NotificationCompat.Builder(this, "data_alert_channel")
-            .setSmallIcon(R.mipmap.ic_launcher) // Ensure this icon exists or use a vector
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -572,6 +541,47 @@ class MainActivity : AppCompatActivity() {
             bytes >= 1048576 -> String.format(Locale.US, "%.1f MB", bytes / 1048576f)
             bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024f)
             else -> "$bytes B"
+        }
+    }
+    
+    private fun recordAppOpen() {
+        val openCount = prefs.getInt("app_open_count", 0) + 1
+        prefs.edit().putInt("app_open_count", openCount).apply()
+    }
+    
+    private fun showRateUsFlow() {
+        val manager = ReviewManagerFactory.create(this)
+        val openCount = prefs.getInt("app_open_count", 0)
+        val lastReview = prefs.getLong("last_review_prompt", 0L)
+        
+        val isEligible = openCount >= 5 && 
+                         (lastReview == 0L || System.currentTimeMillis() - lastReview > TimeUnit.DAYS.toMillis(30))
+
+        if (isEligible) {
+            val request = manager.requestReviewFlow()
+            request.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val reviewInfo = task.result
+                    val flow = manager.launchReviewFlow(this, reviewInfo)
+                    flow.addOnCompleteListener {
+                        prefs.edit().putLong("last_review_prompt", System.currentTimeMillis()).apply()
+                    }
+                } else {
+                    openPlayStoreForRating()
+                }
+            }
+        } else {
+            openPlayStoreForRating()
+        }
+    }
+
+    private fun openPlayStoreForRating() {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))
+            startActivity(intent)
         }
     }
 }

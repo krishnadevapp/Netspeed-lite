@@ -10,4 +10,9 @@
     <!-- Messages -->
     <string name="data_reset">Data Usage Reset</string>
 
+    <!-- Support & Feedback -->
+    <string name="support_feedback">SUPPORT &amp; FEEDBACK</string>
+    <string name="rate_us">Rate Us</string>
+    <string name="rate_us_subtitle">Enjoying Netspeed Lite? Share your feedback</string>
+
 </resources>

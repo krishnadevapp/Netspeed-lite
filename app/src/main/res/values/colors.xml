@@ -8,13 +8,14 @@
     <color name="colorSurfaceElevated">#F0F2F5</color>
     
     <!-- Primary / Brand (Muted) -->
-    <color name="colorPrimary">#E2E8F0</color> <!-- CHANGED: Darker Soft Grey Header -->
+    <color name="colorPrimary">#CBD5E1</color> <!-- Darker Soft Grey Header (Increased Greyness) -->
+    <color name="colorPrimaryContainer">#FFFFFF</color> <!-- Light container color -->
     <color name="colorPrimaryDark">#1D4ED8</color>
     <color name="colorAccent">#2563EB</color> 
     
     <!-- Sections -->
     <color name="colorHeaderRow">#F1F5F9</color> <!-- Increased intensity for header differentiation -->
-    <color name="colorBottomBar">#FFFFFF</color>
+    <color name="colorBottomBar">#E2E8F0</color> <!-- Increased Greyness for footer -->
 
     <!-- Text (Refined for Comfort) -->
     <color name="textPrimary">#111827</color>  <!-- High contrast black -->
@@ -36,8 +37,15 @@
     <color name="colorStroke">#D1D5DB</color>
     
     <!-- UI Controls (Explicit Definitions for Light Mode) -->
-    <color name="radio_button_unchecked_color">#9CA3AF</color> <!-- Polished Medium Grey -->
-    <color name="radio_button_checked_color">#2563EB</color>   <!-- Primary Blue -->
+    <color name="radio_button_unchecked_color">#424242</color>
+    <color name="radio_button_checked_color">#2563EB</color>
+    
+    <!-- Scoped Colors for Appearance Radio Buttons -->
+    <color name="appearance_radio_checked_color">#2563EB</color>
+    <color name="appearance_radio_unchecked_color">#4A4A4A</color>
+    
+    <!-- Toggle Button Colors -->
+    <color name="toggle_background_checked">#2563EB</color>
     
     <!-- FIX: Explicit switch track colors for Light Mode -->
     <color name="switch_track_unchecked_color">#D1D5DB</color>
