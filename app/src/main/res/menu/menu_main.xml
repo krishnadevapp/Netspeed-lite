@@ -4,6 +4,7 @@
     <item
         android:id="@+id/action_settings"
         android:title="@string/settings"
-        android:icon="@android:drawable/ic_menu_preferences"
-        app:showAsAction="never" />
+        android:icon="@drawable/ic_settings"
+        app:showAsAction="always"
+        app:iconTint="@color/appBarText" />
 </menu>

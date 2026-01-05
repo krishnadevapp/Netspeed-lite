@@ -59,7 +59,7 @@
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="1dp"
+        android:layout_height="1dp" 
         android:background="@color/colorDivider"/>
 
     <!-- CONTENT -->
@@ -220,7 +220,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Please enter a valid data limit"
-                            android:textColor="@android:color/holo_red_dark"
+                            android:textColor="@color/colorErrorText"
                             android:visibility="gone"
                             android:textSize="12sp"
                             android:layout_marginTop="4dp"/>
@@ -351,7 +351,7 @@
                 android:paddingVertical="14dp"
                 android:paddingHorizontal="4dp"
                 android:text="Stop and Exit"
-                android:textColor="#D32F2F"
+                android:textColor="@color/colorErrorText"
                 android:textSize="15sp"/>
             
             <!-- SUPPORT & FEEDBACK -->
@@ -384,7 +384,8 @@
                     android:layout_height="24dp"
                     android:src="@drawable/ic_star_rate"
                     android:layout_marginEnd="16dp"
-                    app:tint="#FBC02D"/> <!-- Updated tint to Material Yellow 700 -->
+                    android:contentDescription="@string/star_icon"
+                    app:tint="@color/colorStarTint"/>
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -411,6 +412,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="@string/chevron_icon"
                     app:tint="?android:attr/textColorSecondary"/>
 
             </LinearLayout>

@@ -9,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -28,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,45 +39,117 @@ class SpeedService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastRx = 0L
     private var lastTx = 0L
-    private val interval = 1000L
     private var tickCount = 0
 
-    // Updated channel ID to force re-creation with no-badge settings
-    private val channelId = "speed_channel_v7"
-    private val alertChannelId = "data_alert_channel"
-    private val notificationId = 1
+    private val channelId = Constants.SPEED_CHANNEL_ID
+    private val alertChannelId = Constants.ALERT_CHANNEL_ID
+    private val notificationId = Constants.NOTIFICATION_ID
     
-    // Fixed timestamp to prevent notification sorting jumps
     private val serviceStartTime = System.currentTimeMillis()
 
     private lateinit var prefs: SharedPreferences
 
-    // Coroutine Scope
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+
+    // ===== DENSITY-INDEPENDENT ICON SIZE: Uses dp instead of fixed pixels =====
+    private val optimalIconSize: Int by lazy {
+        try {
+            val density = resources?.displayMetrics?.density ?: 2.0f
+            val baseDp = 64 // Use 64dp as base for large notification icons (Android guideline)
+            
+            // Convert dp to pixels using device density
+            // This ensures proper scaling across all screen densities:
+            // MDPI (1.0x): 64px, HDPI (1.5x): 96px, XHDPI (2.0x): 128px
+            // XXHDPI (3.0x): 192px, XXXHDPI (4.0x): 256px
+            val baseSize = (baseDp * density).toInt()
+            
+            // Apply manufacturer-specific adjustments as multipliers (not fixed values)
+            // This maintains density independence while accounting for rendering differences
+            val manufacturer = Build.MANUFACTURER.lowercase(Locale.ROOT)
+            val adjustmentFactor = when {
+                manufacturer.contains("samsung") -> 1.1f  // Samsung devices benefit from slightly larger icons
+                
+                // OnePlus and Vivo devices need significantly larger icons to display properly
+                manufacturer.contains("oneplus") -> 1.5f  // Increased from 1.2f for better visibility
+                manufacturer.contains("vivo") -> 1.5f     // Increased from 1.2f for better visibility
+                manufacturer.contains("oppo") -> 1.4f    // Slightly less than OnePlus/Vivo
+                manufacturer.contains("realme") -> 1.4f  // Slightly less than OnePlus/Vivo
+                
+                manufacturer.contains("xiaomi") ||
+                manufacturer.contains("redmi") ||
+                manufacturer.contains("poco") -> 1.15f
+                
+                else -> 1.0f
+            }
+            
+            // Calculate adjusted size
+            val adjustedSize = (baseSize * adjustmentFactor).toInt()
+            
+            // For OnePlus and Vivo, ensure minimum size is larger to prevent small icons
+            // Ensure reasonable bounds: minimum 64px (1x MDPI), maximum 600px (increased for OnePlus/Vivo)
+            val finalSize = if (manufacturer.contains("oneplus") || manufacturer.contains("vivo")) {
+                adjustedSize.coerceIn(96, 600)  // Higher minimum and maximum for OnePlus/Vivo
+            } else {
+                adjustedSize.coerceIn(64, 512)
+            }
+            
+            android.util.Log.d("SpeedService", "Icon size calculation: manufacturer=$manufacturer, density=$density, baseSize=$baseSize, adjustmentFactor=$adjustmentFactor, finalSize=$finalSize")
+            
+            finalSize
+        } catch (e: Exception) {
+            android.util.Log.e("SpeedService", "Error calculating optimal icon size", e)
+            128 // Fallback to safe default (XHDPI)
+        }
+    }
+
+    // Icon cache for performance - using LinkedHashMap for LRU behavior
+    // Fix: Limit cache size to prevent unbounded growth
+    private val iconCache = object : LinkedHashMap<String, IconCompat>(Constants.MAX_ICON_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, IconCompat>?): Boolean {
+            return size > Constants.MAX_ICON_CACHE_SIZE
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private val runnable = object : Runnable {
         override fun run() {
-            updateNotificationData()
+            serviceScope.launch {
+                try {
+                    updateNotificationDataSuspend()
+                } catch (e: Exception) {
+                    // Log potential errors from data fetching or notification update
+                    e.printStackTrace()
+                }
+            }
             if (tickCount % 5 == 0) checkDataAlerts()
             tickCount++
-            handler.postDelayed(this, interval)
+            handler.postDelayed(this, Constants.UPDATE_INTERVAL_MS)
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
 
         createNotificationChannel()
         createAlertChannel()
 
-        lastRx = TrafficStats.getTotalRxBytes()
-        lastTx = TrafficStats.getTotalTxBytes()
+        // Initialize with current stats, handling -1 (unavailable)
+        val initialRx = TrafficStats.getTotalRxBytes()
+        val initialTx = TrafficStats.getTotalTxBytes()
+        lastRx = if (initialRx == -1L) 0L else initialRx
+        lastTx = if (initialTx == -1L) 0L else initialTx
 
         val notification = buildNotification("Initializing...", "0", "KB/s", "Starting...")
-        startForeground(notificationId, notification)
+        
+        // Pass foregroundServiceType to support Android 14+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Use UPSIDE_DOWN_CAKE for API 34
+             startForeground(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+             startForeground(notificationId, notification)
+        }
+        
         handler.post(runnable)
     }
 
@@ -84,40 +158,50 @@ class SpeedService : Service() {
     }
 
     private fun checkDataAlerts() {
-        if (!prefs.getBoolean("daily_limit_enabled", false)) return
+        if (!prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)) return
 
         serviceScope.launch {
             if (!hasUsageStatsPermission()) return@launch
 
-            val limitMb = prefs.getFloat("daily_limit_mb", 0f)
+            val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
             if (limitMb <= 0f) return@launch
 
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val lastChecked = prefs.getString("last_alert_date", "")
+            val todayStr = try {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            } catch (e: Exception) {
+                android.util.Log.e("SpeedService", "Error formatting date", e)
+                ""
+            }
+            val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
 
-            if (todayStr != lastChecked) {
-                prefs.edit().putString("last_alert_date", todayStr)
-                    .putBoolean("alert_80_triggered", false)
-                    .putBoolean("alert_100_triggered", false).apply()
+            if (todayStr.isNotEmpty() && todayStr != lastChecked) {
+                prefs.edit().putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
+                    .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                    .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false).apply()
             }
 
-            val alert80 = prefs.getBoolean("alert_80_triggered", false)
-            val alert100 = prefs.getBoolean("alert_100_triggered", false)
+            val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+            val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
 
             if (alert80 && alert100) return@launch
 
             val limitBytes = (limitMb * 1024 * 1024).toLong()
+            if (limitBytes <= 0) return@launch
 
             val (mobileUsage, _) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
 
-            val percentage = (mobileUsage.toDouble() / limitBytes.toDouble()) * 100
+            val percentage = if (limitBytes > 0) {
+                (mobileUsage.toDouble() / limitBytes.toDouble()) * 100
+            } else {
+                0.0
+            }
 
             if (percentage >= 100 && !alert100) {
                 sendAlertNotification("Daily limit reached", "You have reached your daily data limit.")
-                prefs.edit().putBoolean("alert_100_triggered", true).apply()
+                prefs.edit().putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true).apply()
             } else if (percentage >= 80 && !alert80 && !alert100) {
                 sendAlertNotification("Data Warning", "You've used 80% of your daily data limit.")
-                prefs.edit().putBoolean("alert_80_triggered", true).apply()
+                prefs.edit().putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true).apply()
             }
         }
     }
@@ -131,46 +215,66 @@ class SpeedService : Service() {
             .setAutoCancel(true)
             .setContentIntent(getOpenAppIntent())
             .build()
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(System.currentTimeMillis().toInt(), notification)
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        // Use a fixed notification ID for alerts to avoid collisions
+        manager?.notify(Constants.NOTIFICATION_ID + 2, notification)
     }
 
-    private fun updateNotificationData() {
+    // Refactored to be a suspend function to run network operations on a background thread
+    private suspend fun updateNotificationDataSuspend() = withContext(Dispatchers.IO) {
         val rx = TrafficStats.getTotalRxBytes()
         val tx = TrafficStats.getTotalTxBytes()
-        val rxDelta = rx - lastRx
-        val txDelta = tx - lastTx
+        
+        // Handle TrafficStats reset or unavailable (-1)
+        // If stats reset or are unavailable, use 0 to avoid negative or huge values
+        val rxDelta = if (rx == -1L || lastRx == -1L || rx < lastRx) {
+            0L // Stats reset or unavailable
+        } else {
+            rx - lastRx
+        }
+        
+        val txDelta = if (tx == -1L || lastTx == -1L || tx < lastTx) {
+            0L // Stats reset or unavailable
+        } else {
+            tx - lastTx
+        }
+        
         val totalBytes = rxDelta + txDelta
 
-        lastRx = rx
-        lastTx = tx
+        // Only update if values are valid
+        if (rx != -1L) lastRx = rx
+        if (tx != -1L) lastTx = tx
 
         val (speedVal, unitVal) = formatSpeed(totalBytes)
         val details = StringBuilder()
 
         if (hasUsageStatsPermission()) {
-            val (mobile, wifi) = NetworkUsageHelper.getUsageForDate(this, System.currentTimeMillis())
+            // NetworkUsageHelper call moved to IO dispatcher
+            val (mobile, wifi) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
             details.append("Mobile: ${formatUsage(mobile)} | WiFi: ${formatUsage(wifi)}")
         } else {
             details.append("Tap to grant permission")
         }
 
         var speedTitle = "$speedVal $unitVal"
-        if (prefs.getBoolean("show_up_down", false)) {
+        if (prefs.getBoolean(Constants.PREF_SHOW_UP_DOWN, false)) {
             speedTitle += "   ↓ ${formatSimple(rxDelta)}   ↑ ${formatSimple(txDelta)}"
         }
-        if (prefs.getBoolean("show_wifi_signal", false)) {
+        if (prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)) {
             speedTitle += "   \uD83D\uDCF6 ${getWifiSignal()}%"
         }
 
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(notificationId, buildNotification(speedTitle, speedVal, unitVal, details.toString()))
+        val notification = buildNotification(speedTitle, speedVal, unitVal, details.toString())
+
+        // Post notification update back to the Main thread (or directly if NotificationManager is thread-safe, which it is)
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.notify(notificationId, notification)
     }
 
     // --- Helpers ---
 
     private fun hasUsageStatsPermission(): Boolean {
-        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
         } else {
@@ -180,12 +284,17 @@ class SpeedService : Service() {
     }
 
     private fun getWifiSignal(): Int {
-        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         return try {
-            val rssi = wm.connectionInfo.rssi
-            val level = WifiManager.calculateSignalLevel(rssi, 100)
-            level
-        } catch (e: Exception) { 0 }
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return 0
+            val connectionInfo = wm.connectionInfo
+            val rssi = connectionInfo?.rssi ?: return 0
+            WifiManager.calculateSignalLevel(rssi, 100)
+        } catch (e: SecurityException) {
+            // Android 10+ requires location permission for WiFi info
+            0
+        } catch (e: Exception) {
+            0
+        }
     }
 
     private fun formatSpeed(bytes: Long): Pair<String, String> {
@@ -204,7 +313,8 @@ class SpeedService : Service() {
         return when {
             bytes >= 1073741824 -> String.format(Locale.US, "%.1f GB", bytes / 1073741824f)
             bytes >= 1048576 -> String.format(Locale.US, "%.1f MB", bytes / 1048576f)
-            else -> String.format(Locale.US, "%.1f MB", bytes / 1048576f)
+            bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024f)
+            else -> "$bytes B"
         }
     }
 
@@ -214,9 +324,9 @@ class SpeedService : Service() {
             .setContentTitle(title)
             .setContentText(details)
             .setOngoing(true)
-            .setAutoCancel(false) // Fix: Prevent implicit cancellation
-            .setNumber(0) // Fix: Explicitly set count to 0
-            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE) // Fix: Do not show badge icon
+            .setAutoCancel(false)
+            .setNumber(0)
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -230,27 +340,74 @@ class SpeedService : Service() {
 
     private fun getOpenAppIntent(): PendingIntent {
         val intent = packageManager.getLaunchIntentForPackage(packageName)
-        intent?.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        return PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            ?: Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        return PendingIntent.getActivity(this, 0, intent, flags)
     }
 
     private fun createSpeedIcon(speed: String, unit: String): IconCompat {
-        val size = 96
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        // Check cache
+        val cacheKey = "$speed|$unit"
+        iconCache[cacheKey]?.let { return it }
+        
+        // Fix: LRU cache automatically removes eldest entries when size exceeds limit
+        // No need to manually clear the entire cache
+        
+        val size = optimalIconSize
+        
+        // Check if device is OnePlus or Vivo for additional adjustments
+        val manufacturer = Build.MANUFACTURER.lowercase(Locale.ROOT)
+        val isOnePlusOrVivo = manufacturer.contains("oneplus") || manufacturer.contains("vivo")
+        
+        try {
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            
+            // ===== KEY FIX: Use higher quality settings =====
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                isFilterBitmap = true  // Important for scaling
+                isDither = true        // Better quality
+                // For OnePlus/Vivo, use LCD rendering hint for better text clarity
+                if (isOnePlusOrVivo) {
+                    isLinearText = false  // Use subpixel rendering when available
+                }
+            }
+            
+            // Adjust text size proportions for OnePlus/Vivo to ensure visibility
+            val speedTextSizeMultiplier = if (isOnePlusOrVivo) 0.75f else 0.72f
+            val unitTextSizeMultiplier = if (isOnePlusOrVivo) 0.40f else 0.38f
+            
+            // Keep your original proportions - adjusted for OnePlus/Vivo
+            paint.textSize = size * speedTextSizeMultiplier
+            val textWidth = paint.measureText(speed)
+            if (textWidth > size * 0.94f) {
+                paint.textScaleX = (size * 0.94f) / textWidth
+            }
+            canvas.drawText(speed, size / 2f, size * 0.58f, paint)
+            
+            paint.textScaleX = 1.0f
+            paint.textSize = size * unitTextSizeMultiplier
+            canvas.drawText(unit, size / 2f, size * 0.95f, paint)
+            
+            val iconCompat = IconCompat.createWithBitmap(bitmap)
+            iconCache[cacheKey] = iconCompat
+            
+            return iconCompat
+        } catch (e: Exception) {
+            android.util.Log.e("SpeedService", "Error creating speed icon", e)
+            // Fallback to static icon
+            return IconCompat.createWithResource(this, R.drawable.ic_speed)
         }
-        paint.textSize = size * 0.72f
-        val textWidth = paint.measureText(speed)
-        if (textWidth > size * 0.94f) paint.textScaleX = (size * 0.94f) / textWidth
-        canvas.drawText(speed, size / 2f, size * 0.58f, paint)
-        paint.textScaleX = 1.0f
-        paint.textSize = size * 0.38f
-        canvas.drawText(unit, size / 2f, size * 0.95f, paint)
-        return IconCompat.createWithBitmap(bitmap)
     }
 
     private fun createNotificationChannel() {
@@ -258,22 +415,25 @@ class SpeedService : Service() {
             val channel = NotificationChannel(channelId, "Internet Speed", NotificationManager.IMPORTANCE_LOW)
             channel.setSound(null, null)
             channel.enableVibration(false)
-            channel.setShowBadge(false) // Fix: Explicitly disable notification dot/badge
+            channel.setShowBadge(false)
             channel.lockscreenVisibility = Notification.VISIBILITY_SECRET
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
         }
     }
 
     private fun createAlertChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(alertChannelId, "Data Usage Alerts", NotificationManager.IMPORTANCE_HIGH)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
         }
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(runnable)
         serviceScope.cancel()
+        // Removed: LRU cache automatically manages size, no need to clear
         super.onDestroy()
     }
 }

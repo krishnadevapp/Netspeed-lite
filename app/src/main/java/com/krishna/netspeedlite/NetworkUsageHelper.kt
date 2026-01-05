@@ -12,7 +12,8 @@ object NetworkUsageHelper {
     private const val SANITY_THRESHOLD = 100L * 1024 * 1024 * 1024 * 1024
 
     fun getUsageForDate(context: Context, timestamp: Long): Pair<Long, Long> {
-        val statsManager = context.getSystemService(Context.NETWORK_STATS_SERVICE) as NetworkStatsManager
+        val statsManager = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+            ?: return Pair(0L, 0L)
 
         // 1. Calculate Start and End of the given day
         val calendar = Calendar.getInstance()
@@ -38,9 +39,17 @@ object NetworkUsageHelper {
 
     private fun getSafeUsage(manager: NetworkStatsManager, networkType: Int, start: Long, end: Long): Long {
         var totalBytes = 0L
+        var networkStats: NetworkStats? = null
         try {
             // Use querySummary to iterate over buckets (Fixes 0 Data bug)
-            val networkStats = manager.querySummary(networkType, null, start, end)
+            networkStats = manager.querySummary(networkType, null, start, end)
+            
+            // Fix: Add null check for querySummary result
+            if (networkStats == null) {
+                android.util.Log.w("NetworkUsageHelper", "querySummary returned null for networkType: $networkType")
+                return 0L
+            }
+            
             val bucket = NetworkStats.Bucket()
 
             while (networkStats.hasNextBucket()) {
@@ -53,9 +62,10 @@ object NetworkUsageHelper {
 
                 totalBytes += bytes
             }
-            networkStats.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("NetworkUsageHelper", "Error getting safe usage", e)
+        } finally {
+            networkStats?.close()
         }
         return totalBytes
     }

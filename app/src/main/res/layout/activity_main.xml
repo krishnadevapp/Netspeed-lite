@@ -82,15 +82,21 @@
         </com.google.android.material.appbar.AppBarLayout>
 
         <!-- ================= PERMISSION BUTTON ================= -->
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPermission"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
-            android:text="Grant Usage Permission"
-            android:backgroundTint="@color/colorAccent"
+            android:text="@string/grant_usage_permission"
             android:textColor="@android:color/white"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            app:backgroundTint="@color/colorAccent"
+            app:cornerRadius="12dp"
+            android:paddingVertical="14dp"
             android:visibility="gone"
+            android:elevation="2dp"
+            style="@style/Widget.MaterialComponents.Button"
             tools:visibility="visible"/>
 
         <!-- ================= HEADER ROW (Subtle & Aligned) ================= -->

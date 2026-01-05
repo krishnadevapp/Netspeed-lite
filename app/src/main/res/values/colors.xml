@@ -55,6 +55,10 @@
     <color name="control_switch_track_on">#2563EB</color>
     <color name="control_switch_track_off">#D1D5DB</color>
 
+    <!-- New colors for consistency -->
+    <color name="colorErrorText">#D32F2F</color>
+    <color name="colorStarTint">#FBC02D</color>
+
     <!-- Legacy / Unused -->
     <color name="colorFooter">#FFFFFF</color>
     <color name="pillDateBg">#00000000</color>

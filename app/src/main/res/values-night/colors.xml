@@ -40,8 +40,8 @@
     <color name="appearance_radio_checked_color">#A8C7FA</color>
     <color name="appearance_radio_unchecked_color">#BDBDBD</color>
     
-    <!-- Toggle Button Colors -->
-    <color name="toggle_background_checked">#A8C7FA</color>
+    <!-- Toggle Button Colors - Darker for better contrast in dark mode -->
+    <color name="toggle_background_checked">#3B5A8F</color> <!-- Darker blue for dark mode buttons -->
     
     <!-- FIX: Increased contrast for switch tracks -->
     <color name="switch_track_unchecked_color">#555960</color> <!-- Lighter than bg for visibility -->
@@ -50,6 +50,10 @@
     <!-- Brighter Primary Tint for ON track to contrast with dark background, but darker than thumb -->
     <color name="control_switch_track_on">#5285EA</color> 
     <color name="control_switch_track_off">#555960</color> <!-- Matches unchecked track -->
+
+    <!-- New colors for consistency -->
+    <color name="colorErrorText">#FF8A80</color>
+    <color name="colorStarTint">#FFEB3B</color>
 
     <!-- Legacy / Unused -->
     <color name="pillDateBg">#00000000</color>

@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme -->
-    <style name="Base.Theme.DataUsagemeterlite" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.NetspeedLite" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Customize your light theme here -->
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorOnPrimary">@color/textOnDark</item>
@@ -31,7 +31,7 @@
         <item name="alertDialogTheme">@style/Theme.App.Dialog</item>
     </style>
 
-    <style name="Theme.DataUsagemeterlite" parent="Base.Theme.DataUsagemeterlite" />
+    <style name="Theme.NetspeedLite" parent="Base.Theme.NetspeedLite" />
     
     <!-- Custom Dialog Theme -->
     <style name="Theme.App.Dialog" parent="Theme.Material3.DayNight.Dialog.Alert">
