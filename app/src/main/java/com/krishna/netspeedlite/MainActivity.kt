@@ -28,6 +28,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
+import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
@@ -63,6 +64,7 @@ class MainActivity : AppCompatActivity() {
 
     // Auto-refresh timer for "Live" updates in the app
     private val refreshHandler = Handler(Looper.getMainLooper())
+    @Volatile
     private var isRefreshing = false
     private val refreshRunnable = object : Runnable {
         override fun run() {
@@ -102,26 +104,20 @@ class MainActivity : AppCompatActivity() {
 
         setupPermissions()
         setupUI()
-        binding.root.post {
-            try {
-                setupSidePanel()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+
         createNotificationChannel()
 
         refreshData()
 
         val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
-        if (showSpeed) {
+        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+        if (showSpeed || isAlertEnabled) {
             startSpeedService()
         }
 
         // Reset dismissed flag on app start so prompt can show again in new session
         prefs.edit().putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, false).apply()
 
-        checkBatteryOptimization()
         recordAppOpen()
 
         // Handle back presses using the modern API
@@ -139,108 +135,9 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
-    private fun checkBatteryOptimization() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
 
-            // Only prompt if not ignoring and we haven't asked before
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName) &&
-                !prefs.getBoolean(Constants.PREF_BATTERY_OPT_ASKED, false)) {
 
-                // Cancel any existing runnable to prevent duplicates
-                batteryOptRunnable?.let { binding.root.removeCallbacks(it) }
 
-                // Delay the prompt to not interrupt user flow - show after 3 seconds
-                // This gives users time to see the app first
-                batteryOptRunnable = Runnable {
-                    // Check if activity is still valid before showing dialog
-                    if (!isFinishing && !isDestroyed && !prefs.getBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, false)) {
-                        showBatteryOptimizationDialog()
-                    }
-                }
-                binding.root.postDelayed(batteryOptRunnable!!, 3000) // 3 second delay
-            }
-        }
-    }
-
-    private fun showBatteryOptimizationDialog() {
-        try {
-            val dialogView = layoutInflater.inflate(R.layout.dialog_battery_optimization, null)
-            val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setCancelable(true)
-                .create()
-
-            dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnOpenSettings)
-                ?.setOnClickListener {
-                    try {
-                        val intent = Intent().apply {
-                            action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                            data = Uri.parse("package:$packageName")
-                        }
-                        startActivity(intent)
-                        prefs.edit().putBoolean(Constants.PREF_BATTERY_OPT_ASKED, true).apply()
-                        dialog.dismiss()
-                    } catch (e: ActivityNotFoundException) {
-                        Log.e("MainActivity", "Could not open battery optimization settings.", e)
-                        Toast.makeText(this, getString(R.string.battery_optimization_error), Toast.LENGTH_SHORT).show()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error opening battery optimization settings.", e)
-                        e.printStackTrace()
-                    }
-                }
-
-            dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnNotNow)
-                ?.setOnClickListener {
-                    // User dismissed - don't show again in this session
-                    prefs.edit().putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, true).apply()
-                    dialog.dismiss()
-                }
-
-            dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDontShow)
-                ?.setOnClickListener {
-                    // User doesn't want to see this prompt
-                    prefs.edit()
-                        .putBoolean(Constants.PREF_BATTERY_OPT_ASKED, true)
-                        .putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, true)
-                        .apply()
-                    dialog.dismiss()
-                }
-
-            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-            dialog.show()
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error showing battery optimization dialog", e)
-            // Fallback to simple dialog if custom layout fails
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle(getString(R.string.battery_optimization_title))
-                .setMessage(getString(R.string.battery_optimization_message))
-                .setPositiveButton(getString(R.string.open_settings)) { _, _ ->
-                    try {
-                        val intent = Intent().apply {
-                            action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                            data = Uri.parse("package:$packageName")
-                        }
-                        startActivity(intent)
-                        prefs.edit().putBoolean(Constants.PREF_BATTERY_OPT_ASKED, true).apply()
-                    } catch (ex: Exception) {
-                        Log.e("MainActivity", "Error opening battery optimization settings.", ex)
-                        Toast.makeText(this, getString(R.string.battery_optimization_error), Toast.LENGTH_SHORT).show()
-                    }
-                }
-                .setNegativeButton(getString(R.string.not_now)) { _, _ ->
-                    prefs.edit().putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, true).apply()
-                }
-                .setNeutralButton(getString(R.string.dont_show_again)) { _, _ ->
-                    prefs.edit()
-                        .putBoolean(Constants.PREF_BATTERY_OPT_ASKED, true)
-                        .putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, true)
-                        .apply()
-                }
-                .setCancelable(true)
-                .show()
-        }
-    }
 
     private fun applyThemeFromPrefs() {
         try {
@@ -274,7 +171,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_settings -> {
-                openSidePanel()
+                startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -288,15 +185,15 @@ class MainActivity : AppCompatActivity() {
         refreshHandler.post(refreshRunnable)
 
         if (hasUsageStatsPermission()) {
-            binding.btnPermission.visibility = View.GONE
-            // refreshData() // Removed: refreshRunnable handles immediate call
             checkDataAlerts()
             checkAlertsHandler.removeCallbacks(checkAlertsRunnable)
             checkAlertsHandler.post(checkAlertsRunnable)
-        } else {
-            binding.btnPermission.visibility = View.VISIBLE
         }
+
+
     }
+
+
 
     override fun onPause() {
         super.onPause()
@@ -312,18 +209,16 @@ class MainActivity : AppCompatActivity() {
         batteryOptRunnable?.let { binding.root.removeCallbacks(it) }
         batteryOptRunnable = null
 
-        // Fix memory leak: Clean up handler callbacks
+        // Fix memory leak: Clean up all handler callbacks
         checkAlertsHandler.removeCallbacksAndMessages(null)
+        refreshHandler.removeCallbacksAndMessages(null)
     }
 
     // Replaced with OnBackPressedCallback
     // override fun onBackPressed() { ... }
 
     private fun setupPermissions() {
-        binding.btnPermission.setOnClickListener {
-            showPermissionDialog()
-        }
-
+        // Request notification permission for Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
@@ -331,53 +226,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPermissionDialog() {
-        try {
-            val dialogView = layoutInflater.inflate(R.layout.dialog_permission, null)
-            val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setCancelable(true)
-                .create()
 
-            dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnGrantPermission)
-                ?.setOnClickListener {
-                    try {
-                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                        dialog.dismiss()
-                    } catch (e: ActivityNotFoundException) {
-                        Log.e("MainActivity", "Could not open usage access settings.", e)
-                        Toast.makeText(this, "Could not open settings. Please enable Usage Access manually.", Toast.LENGTH_SHORT).show()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error opening usage access settings.", e)
-                        Toast.makeText(this, "Could not open settings. Please enable Usage Access manually.", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-            dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancelPermission)
-                ?.setOnClickListener {
-                    dialog.dismiss()
-                }
-
-            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-            dialog.show()
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error showing permission dialog", e)
-            // Fallback to simple dialog if custom layout fails
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle(getString(R.string.permission_required))
-                .setMessage(getString(R.string.permission_explanation))
-                .setPositiveButton(getString(R.string.grant_usage_permission)) { _, _ ->
-                    try {
-                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                    } catch (ex: Exception) {
-                        Log.e("MainActivity", "Error opening usage access settings.", ex)
-                        Toast.makeText(this, "Could not open settings. Please enable Usage Access manually.", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                .setNegativeButton(getString(R.string.cancel), null)
-                .show()
-        }
-    }
 
     private fun hasUsageStatsPermission(): Boolean {
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
@@ -398,191 +247,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openSidePanel() {
-        binding.drawerLayout.openDrawer(GravityCompat.END)
-    }
 
-    private fun setupSidePanel() {
-        val navView = binding.navView
-        if (navView.isEmpty()) {
-            Log.w("MainActivity", "NavigationView is empty, skipping setup")
-            return
-        }
-
-        // Safely find all views with null checks
-        val switchShowSpeed = navView.findViewById<MaterialSwitch>(R.id.switchShowSpeed)
-        val switchShowUpDown = navView.findViewById<MaterialSwitch>(R.id.switchShowUpDown)
-        val switchShowWifiSignal = navView.findViewById<MaterialSwitch>(R.id.switchShowWifiSignal)
-        val btnStopExit = navView.findViewById<TextView>(R.id.btnStopExit)
-        val btnClose = navView.findViewById<TextView>(R.id.btnClose)
-        val btnRateUs = navView.findViewById<View>(R.id.btnRateUs)
-
-        val switchDataAlert = navView.findViewById<MaterialSwitch>(R.id.switchDataAlert)
-        val layoutDataLimitOptions = navView.findViewById<View>(R.id.layoutDataLimitOptions)
-        val etDataLimit = navView.findViewById<TextInputEditText>(R.id.etDataLimit)
-        val tvUnitSelection = navView.findViewById<AutoCompleteTextView>(R.id.tvUnitSelection)
-        val tvLimitError = navView.findViewById<TextView>(R.id.tvLimitError)
-
-        val radioGroupTheme = navView.findViewById<RadioGroup>(R.id.radioGroupTheme)
-
-        // Validate critical views exist
-        if (switchShowSpeed == null || switchShowUpDown == null || switchShowWifiSignal == null ||
-            btnStopExit == null || btnClose == null || btnRateUs == null ||
-            switchDataAlert == null || layoutDataLimitOptions == null || etDataLimit == null ||
-            tvUnitSelection == null || tvLimitError == null || radioGroupTheme == null) {
-            Log.e("MainActivity", "Critical views not found in side panel, setup incomplete")
-            return
-        }
-
-        val units = arrayOf("MB", "GB")
-        val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, units)
-        tvUnitSelection.setAdapter(adapter)
-
-        switchShowSpeed.isChecked = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
-        switchShowUpDown.isChecked = prefs.getBoolean(Constants.PREF_SHOW_UP_DOWN, false)
-        switchShowWifiSignal.isChecked = prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)
-
-        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
-        switchDataAlert.isChecked = isAlertEnabled
-        layoutDataLimitOptions.visibility = if (isAlertEnabled) View.VISIBLE else View.GONE
-
-        val savedUnit = prefs.getString(Constants.PREF_SELECTED_UNIT, "MB") ?: "MB"
-        tvUnitSelection.setText(savedUnit, false)
-
-        val savedLimitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
-        if (savedLimitMb > 0) {
-            val displayValue = if (savedUnit == "GB") savedLimitMb / 1024f else savedLimitMb
-            val text = if (displayValue % 1.0 == 0.0) displayValue.toInt().toString() else displayValue.toString()
-            etDataLimit.setText(text)
-        }
-
-        radioGroupTheme.setOnCheckedChangeListener(null)
-
-        val currentTheme = prefs.getInt(Constants.PREF_THEME_MODE, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-        when (currentTheme) {
-            AppCompatDelegate.MODE_NIGHT_NO -> radioGroupTheme.check(R.id.radioThemeLight)
-            AppCompatDelegate.MODE_NIGHT_YES -> radioGroupTheme.check(R.id.radioThemeDark)
-            else -> radioGroupTheme.check(R.id.radioThemeSystem)
-        }
-
-        switchShowSpeed.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_SHOW_SPEED, isChecked).apply()
-            if (isChecked) startSpeedService() else stopService(Intent(this, SpeedService::class.java))
-        }
-
-        switchShowUpDown.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_SHOW_UP_DOWN, isChecked).apply()
-            if (switchShowSpeed.isChecked) startSpeedService()
-        }
-
-        switchShowWifiSignal.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, isChecked).apply()
-            if (switchShowSpeed.isChecked) startSpeedService()
-        }
-
-        switchDataAlert.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, isChecked).apply()
-            layoutDataLimitOptions.visibility = if (isChecked) View.VISIBLE else View.GONE
-            if (isChecked) {
-                checkDataAlerts()
-            }
-        }
-
-        fun saveLimit() {
-            val rawText = etDataLimit.text.toString()
-            val unit = tvUnitSelection.text.toString()
-
-            if (rawText.isBlank()) {
-                if (switchDataAlert.isChecked) tvLimitError.visibility = View.VISIBLE
-                return
-            }
-
-            val rawValue = rawText.toFloatOrNull()
-            if (rawValue == null || rawValue <= 0) {
-                if (switchDataAlert.isChecked) tvLimitError.visibility = View.VISIBLE
-                return
-            }
-
-            tvLimitError.visibility = View.GONE
-
-            val limitMb = if (unit == "GB") rawValue * 1024f else rawValue
-
-            prefs.edit()
-                .putFloat(Constants.PREF_DAILY_LIMIT_MB, limitMb)
-                .putString(Constants.PREF_SELECTED_UNIT, unit)
-                .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                .apply()
-        }
-
-        etDataLimit.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { saveLimit() }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-
-        etDataLimit.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                checkDataAlerts()
-            }
-        }
-
-        tvUnitSelection.setOnItemClickListener { _, _, _, _ ->
-            saveLimit()
-            checkDataAlerts()
-        }
-
-        radioGroupTheme.setOnCheckedChangeListener { group, checkedId ->
-            val mode = when (checkedId) {
-                R.id.radioThemeLight -> AppCompatDelegate.MODE_NIGHT_NO
-                R.id.radioThemeDark -> AppCompatDelegate.MODE_NIGHT_YES
-                else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-            }
-
-            if (prefs.getInt(Constants.PREF_THEME_MODE, -100) != mode) {
-                prefs.edit().putInt(Constants.PREF_THEME_MODE, mode).apply()
-                group.post { AppCompatDelegate.setDefaultNightMode(mode) }
-            }
-        }
-
-
-
-        btnStopExit.setOnClickListener {
-            // Show confirmation dialog before stopping
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle(getString(R.string.confirm_stop_exit_title))
-                .setMessage(getString(R.string.confirm_stop_exit_message))
-                .setPositiveButton(getString(R.string.stop_and_exit)) { _, _ ->
-                    stopService(Intent(this, SpeedService::class.java))
-                    finish()
-                }
-                .setNegativeButton(getString(R.string.cancel), null)
-                .show()
-        }
-
-        btnClose.setOnClickListener {
-            binding.drawerLayout.closeDrawer(GravityCompat.END)
-        }
-
-        btnRateUs.setOnClickListener {
-            showRateUsFlow()
-        }
-    }
 
     private fun refreshData() {
-        if (!hasUsageStatsPermission()) {
-            // Show helpful message if permission not granted
-            if (binding.btnPermission.visibility != View.VISIBLE) {
-                binding.btnPermission.visibility = View.VISIBLE
-            }
-            return
-        }
-
         if (isRefreshing) return
         isRefreshing = true
-
-        // Hide permission button if visible
-        binding.btnPermission.visibility = View.GONE
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -599,14 +268,21 @@ class MainActivity : AppCompatActivity() {
                         calendar.set(Calendar.HOUR_OF_DAY, 0)
                         calendar.set(Calendar.MINUTE, 0)
                         calendar.set(Calendar.SECOND, 0)
+                        calendar.set(Calendar.MILLISECOND, 0)
                         val startTime = calendar.timeInMillis
 
                         calendar.set(Calendar.HOUR_OF_DAY, 23)
                         calendar.set(Calendar.MINUTE, 59)
                         calendar.set(Calendar.SECOND, 59)
+                        calendar.set(Calendar.MILLISECOND, 999)
                         val endTime = calendar.timeInMillis
 
-                        val (m, w) = NetworkUsageHelper.getUsageInRange(applicationContext, startTime, endTime)
+                        val (m, w) = if (hasUsageStatsPermission()) {
+                            NetworkUsageHelper.getUsageInRange(applicationContext, startTime, endTime)
+                        } else {
+                            val manualData = fetchManualData(calendar)
+                            Pair(manualData.mobileBytes, manualData.wifiBytes)
+                        }
                         val mobile = m
                         val wifi = w
 
@@ -642,12 +318,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Helper to fetch manual data if permission is missing
+    private fun fetchManualData(calendar: Calendar): DailyUsage {
+        val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(calendar.time)
+        val mobile = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
+        val wifi = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
+        return DailyUsage(calendar.timeInMillis, mobile, wifi, mobile + wifi)
+    }
+
     private fun getTodayMobileUsage(): Long {
         return try {
             val calendar = Calendar.getInstance()
             calendar.set(Calendar.HOUR_OF_DAY, 0)
             calendar.set(Calendar.MINUTE, 0)
             calendar.set(Calendar.SECOND, 0)
+            calendar.set(Calendar.MILLISECOND, 0)
             val startTime = calendar.timeInMillis
             val endTime = System.currentTimeMillis()
 
@@ -797,39 +482,7 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putInt(Constants.PREF_APP_OPEN_COUNT, openCount).apply()
     }
 
-    private fun showRateUsFlow() {
-        val manager = ReviewManagerFactory.create(this)
-        val openCount = prefs.getInt(Constants.PREF_APP_OPEN_COUNT, 0)
-        val lastReview = prefs.getLong(Constants.PREF_LAST_REVIEW_PROMPT, 0L)
 
-        val isEligible = openCount >= 5 &&
-                (lastReview == 0L || System.currentTimeMillis() - lastReview > TimeUnit.DAYS.toMillis(30))
 
-        if (isEligible) {
-            val request = manager.requestReviewFlow()
-            request.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    val reviewInfo = task.result
-                    val flow = manager.launchReviewFlow(this, reviewInfo)
-                    flow.addOnCompleteListener {
-                        prefs.edit().putLong(Constants.PREF_LAST_REVIEW_PROMPT, System.currentTimeMillis()).apply()
-                    }
-                } else {
-                    openPlayStoreForRating()
-                }
-            }
-        } else {
-            openPlayStoreForRating()
-        }
-    }
 
-    private fun openPlayStoreForRating() {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))
-            startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))
-            startActivity(intent)
-        }
-    }
 }

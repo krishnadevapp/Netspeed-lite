@@ -59,6 +59,24 @@
     <color name="colorErrorText">#D32F2F</color>
     <color name="colorStarTint">#FBC02D</color>
 
+    <!-- Dialog Styling - Blue Theme (Light) -->
+    <color name="colorSurfaceBlueTint">#F0F7FF</color>
+    <color name="colorStrokeBlue">#BFDBFE</color>
+    <color name="colorTextBlue">#1E40AF</color>
+    <color name="colorStepCircleBlue">#3B82F6</color>
+    <color name="colorIconBgBlue">#EEF2FF</color>
+
+    <!-- Dialog Styling - Yellow Theme (Light) -->
+    <color name="colorSurfaceYellowTint">#FFFBEB</color>
+    <color name="colorStrokeYellow">#FCD34D</color>
+    <color name="colorTextYellow">#B45309</color>
+    <color name="colorStepCircleYellow">#F59E0B</color>
+    <color name="colorIconBgYellow">#FFFBEB</color>
+    
+    <!-- Shared Dialog Colors (Light) -->
+    <color name="colorStepTextWhite">#FFFFFF</color>
+    <color name="colorTextInstruction">#1F2937</color>
+
     <!-- Legacy / Unused -->
     <color name="colorFooter">#FFFFFF</color>
     <color name="pillDateBg">#00000000</color>

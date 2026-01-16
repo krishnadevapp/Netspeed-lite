@@ -72,17 +72,36 @@ object NetworkUsageHelper {
                 // NetworkStatsManager might return buckets that *overlap* the start time.
                 // If a bucket started BEFORE our 'resetTimestamp' (which is passed as 'start'),
                 // we must IGNORE it, otherwise the user sees old data immediately after reset.
-                if (bucket.startTimeStamp < start) {
-                    continue
+                val bucketStart = bucket.startTimeStamp
+                val bucketEnd = bucket.endTimeStamp
+                val totalBytesInBucket = bucket.rxBytes + bucket.txBytes
+
+                // Filter out irrelevant buckets (shouldn't happen with querySummary but safe to keep)
+                if (bucketEnd <= start || bucketStart >= end) continue
+
+                // Calculate overlap
+                val overlapStart = if (bucketStart < start) start else bucketStart
+                val overlapEnd = if (bucketEnd > end) end else bucketEnd
+
+                if (overlapEnd <= overlapStart) continue
+
+                // Interpolate bytes based on overlap duration
+                // This handles cases where a bucket spans across midnight (e.g. 23:00 - 01:00)
+                val bucketDuration = bucketEnd - bucketStart
+                val overlapDuration = overlapEnd - overlapStart
+
+                val bytesToAdd = if (bucketDuration > 0) {
+                    val ratio = overlapDuration.toDouble() / bucketDuration.toDouble()
+                    (totalBytesInBucket * ratio).toLong()
+                } else {
+                    totalBytesInBucket
                 }
 
-                val bytes = bucket.rxBytes + bucket.txBytes
-
                 // Filter out negative values or impossible spikes
-                if (bytes < 0) continue
-                if (bytes > SANITY_THRESHOLD) continue
+                if (bytesToAdd < 0) continue
+                if (bytesToAdd > SANITY_THRESHOLD) continue
 
-                totalBytes += bytes
+                totalBytes += bytesToAdd
             }
         } catch (e: Exception) {
             android.util.Log.e("NetworkUsageHelper", "Error getting safe usage", e)

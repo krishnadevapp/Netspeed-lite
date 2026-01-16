@@ -6,83 +6,87 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="?android:attr/colorBackground"
-    android:clickable="true"
-    android:focusable="true">
+    android:fitsSystemWindows="true">
 
-    <!-- HEADER (Polished) -->
-    <LinearLayout
+    <!-- TOOLBAR (Matching Home Screen Style) -->
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingHorizontal="20dp"
-        android:paddingTop="32dp"
-        android:paddingBottom="20dp"
-        android:background="@color/colorPrimary">
+        android:background="@android:color/transparent"
+        android:fitsSystemWindows="true"
+        app:elevation="0dp">
 
-        <LinearLayout
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@mipmap/ic_launcher"
-                android:contentDescription="@string/app_name"
-                android:layout_marginEnd="16dp"/>
+            android:layout_height="60dp"
+            android:background="@color/colorPrimary"
+            app:title=""
+            app:contentInsetStart="0dp"
+            app:contentInsetStartWithNavigation="0dp"
+            app:elevation="0dp">
 
             <LinearLayout
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="16dp">
+
+                <ImageButton
+                    android:id="@+id/btnBack"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/ic_arrow_back_white"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/back"
+                    app:tint="@color/appBarText"
+                    android:layout_marginEnd="8dp"/>
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="Netspeed Lite"
-                    android:textSize="20sp"
+                    android:layout_weight="1"
+                    android:text="@string/settings"
+                    android:textColor="@color/appBarText"
+                    android:textSize="19sp"
                     android:fontFamily="sans-serif-medium"
-                    android:textColor="?android:attr/textColorPrimary"/>
+                    android:letterSpacing="0.01" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Version 1.0.1"
-                    android:textSize="13sp"
-                    android:textColor="?android:attr/textColorSecondary"
-                    android:layout_marginTop="2dp"/>
             </LinearLayout>
-        </LinearLayout>
 
-    </LinearLayout>
+        </com.google.android.material.appbar.MaterialToolbar>
+        
+        <!-- Micro-Divider Line (System Style) -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/colorDivider" 
+            android:alpha="0.8"/>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/colorDivider"/>
+    </com.google.android.material.appbar.AppBarLayout>
 
     <!-- CONTENT -->
-    <!-- Added ID and clipToPadding=false for dynamic inset handling -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/settingsScrollView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false">
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
-            android:paddingBottom="120dp"> <!-- SIGNIFICANTLY Increased bottom padding -->
+            android:paddingBottom="40dp">
 
             <!-- Notification Settings -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Notifications"
+                android:text="@string/section_notifications"
                 android:textSize="12sp"
                 android:textAllCaps="true"
                 android:textColor="?android:attr/textColorSecondary"
@@ -95,7 +99,7 @@
                 android:id="@+id/switchShowSpeed"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Show Internet Speed"
+                android:text="@string/show_internet_speed"
                 android:textSize="15sp"
                 android:textColor="?android:attr/textColorPrimary"/>
 
@@ -110,7 +114,7 @@
                 android:id="@+id/switchShowUpDown"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Show Up/Down Speed"
+                android:text="@string/show_up_down_speed"
                 android:textSize="15sp"
                 android:textColor="?android:attr/textColorPrimary"/>
 
@@ -125,7 +129,7 @@
                 android:id="@+id/switchShowWifiSignal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Show WiFi Strength"
+                android:text="@string/show_wifi_strength"
                 android:textSize="15sp"
                 android:textColor="?android:attr/textColorPrimary"/>
 
@@ -133,7 +137,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Mobile data usage alerts"
+                android:text="@string/section_data_alerts"
                 android:textSize="12sp"
                 android:textAllCaps="true"
                 android:textColor="?android:attr/textColorSecondary"
@@ -161,7 +165,7 @@
                         android:id="@+id/switchDataAlert"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Daily Data Limit Alert"
+                        android:text="@string/daily_data_limit_alert"
                         android:textSize="15sp"
                         android:textColor="?android:attr/textColorPrimary"/>
 
@@ -219,7 +223,7 @@
                             android:id="@+id/tvLimitError"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Please enter a valid data limit"
+                            android:text="@string/data_limit_error"
                             android:textColor="@color/colorErrorText"
                             android:visibility="gone"
                             android:textSize="12sp"
@@ -228,7 +232,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Alerts will trigger at 80% and 100% of daily limit"
+                            android:text="@string/data_limit_alert_info"
                             android:textSize="12sp"
                             android:textColor="?android:attr/textColorSecondary"
                             android:layout_marginTop="6dp"/>
@@ -236,11 +240,11 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- SECTION: Appearance (Fixed - Toggle Buttons) -->
+            <!-- SECTION: Appearance -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Appearance"
+                android:text="@string/section_appearance"
                 android:textSize="12sp"
                 android:textAllCaps="true"
                 android:textColor="?android:attr/textColorSecondary"
@@ -270,7 +274,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="System"
+                        android:text="@string/theme_system"
                         android:textSize="14sp"
                         android:gravity="center"
                         android:paddingVertical="10dp"
@@ -284,7 +288,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Light"
+                        android:text="@string/theme_light"
                         android:textSize="14sp"
                         android:gravity="center"
                         android:paddingVertical="10dp"
@@ -298,7 +302,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Dark"
+                        android:text="@string/theme_dark"
                         android:textSize="14sp"
                         android:gravity="center"
                         android:paddingVertical="10dp"
@@ -309,11 +313,201 @@
                 </RadioGroup>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- SECTION: Permissions -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/section_permissions"
+                android:textSize="12sp"
+                android:textAllCaps="true"
+                android:textColor="?android:attr/textColorSecondary"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="12dp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.05"/>
+
+            <!-- Usage Access Permission Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/layoutUsageAccess"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                app:cardCornerRadius="14dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/colorStroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="?attr/colorSurface"
+                android:clickable="true"
+                android:focusable="true"
+                style="?attr/materialCardViewElevatedStyle"
+                app:rippleColor="?attr/colorControlHighlight">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="16dp">
+
+                    <!-- Icon Container -->
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_circle_light_accent"
+                        android:layout_marginEnd="14dp">
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_security"
+                            app:tint="@color/colorAccent"
+                            android:contentDescription="@string/usage_access_title"/>
+                    </FrameLayout>
+
+                    <!-- Text Content -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/usage_access_title"
+                            android:textSize="15sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:textColor="?android:attr/textColorPrimary"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/usage_access_desc"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:layout_marginTop="3dp"
+                            android:lineSpacingMultiplier="1.2"/>
+                    </LinearLayout>
+
+                    <!-- Status Badge -->
+                    <TextView
+                        android:id="@+id/tvUsageAccessStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/status_not_granted"
+                        android:textSize="11sp"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold"
+                        android:textAllCaps="true"
+                        android:background="@drawable/bg_status_badge_error"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="4dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <!-- Chevron -->
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="?android:attr/textColorSecondary"
+                        android:contentDescription="@string/chevron_icon"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Battery Optimization Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/layoutBatteryOptimization"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="14dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/colorStroke"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="?attr/colorSurface"
+                android:clickable="true"
+                android:focusable="true"
+                style="?attr/materialCardViewElevatedStyle"
+                app:rippleColor="?attr/colorControlHighlight">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="16dp">
+
+                    <!-- Icon Container -->
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_circle_yellow_light"
+                        android:layout_marginEnd="14dp">
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_battery_alert"
+                            app:tint="@color/colorStepCircleYellow"
+                            android:contentDescription="@string/battery_opt_title"/>
+                    </FrameLayout>
+
+                    <!-- Text Content -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/battery_opt_title"
+                            android:textSize="15sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:textColor="?android:attr/textColorPrimary"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/battery_opt_desc"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:layout_marginTop="3dp"
+                            android:lineSpacingMultiplier="1.2"/>
+                    </LinearLayout>
+
+                    <!-- Status Badge -->
+                    <TextView
+                        android:id="@+id/tvBatteryOptStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/status_optimized"
+                        android:textSize="11sp"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold"
+                        android:textAllCaps="true"
+                        android:background="@drawable/bg_status_badge_error"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="4dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <!-- Chevron -->
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right"
+                        app:tint="?android:attr/textColorSecondary"
+                        android:contentDescription="@string/chevron_icon"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Actions -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Actions"
+                android:text="@string/section_actions"
                 android:textSize="12sp"
                 android:textAllCaps="true"
                 android:textColor="?android:attr/textColorSecondary"
@@ -331,7 +525,7 @@
                 android:focusable="true"
                 android:paddingVertical="14dp"
                 android:paddingHorizontal="4dp"
-                android:text="Stop and Exit"
+                android:text="@string/stop_exit"
                 android:textColor="@color/colorErrorText"
                 android:textSize="15sp"/>
 
@@ -398,12 +592,18 @@
 
             </LinearLayout>
 
-            <!-- Hidden Close Button (Removed from Bottom) -->
             <TextView
-                android:id="@+id/btnClose"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone"/>
+                android:id="@+id/btnPrivacy"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingVertical="14dp"
+                android:paddingHorizontal="4dp"
+                android:text="@string/privacy_policy"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textSize="15sp"/>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

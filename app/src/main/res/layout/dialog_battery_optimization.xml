@@ -1,161 +1,182 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@drawable/bg_dialog_rounded"
-    android:padding="0dp">
+    app:cardCornerRadius="24dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:strokeColor="@color/colorStroke"
+    app:strokeWidth="1dp">
 
-    <!-- Header with Icon -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:paddingTop="32dp"
-        android:paddingBottom="24dp"
-        android:paddingHorizontal="24dp"
-        android:background="@color/colorPrimary">
-
-        <!-- Battery Icon -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            app:cardCornerRadius="36dp"
-            app:cardElevation="0dp"
-            app:cardBackgroundColor="@android:color/white"
-            android:layout_marginBottom="16dp">
-
-            <ImageView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:padding="16dp"
-                android:src="@android:drawable/ic_dialog_info"
-                android:contentDescription="@string/battery_optimization_title"
-                app:tint="@color/colorAccent" />
-        </androidx.cardview.widget.CardView>
-
-        <!-- Title -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/battery_optimization_title"
-            android:textColor="@color/appBarText"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center" />
-
-    </LinearLayout>
-
-    <!-- Content -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="24dp">
 
-        <!-- Message -->
+        <!-- Header Icon -->
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_battery_alert"
+            app:tint="@color/colorStarTint"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_circle_yellow_light"
+            android:padding="14dp"/>
+
+        <!-- Title -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/battery_optimization_title"
+            android:textColor="@color/colorTextYellow"
+            android:textSize="22sp"
+            android:fontFamily="sans-serif-black"
+            android:gravity="center"
+            android:letterSpacing="-0.01"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Explanation Text -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/battery_optimization_message"
-            android:textColor="@color/textPrimary"
+            android:textColor="?android:attr/textColorSecondary"
             android:textSize="15sp"
-            android:lineSpacingMultiplier="1.2"
-            android:paddingBottom="24dp" />
+            android:lineSpacingMultiplier="1.4"
+            android:gravity="center"
+            android:layout_marginBottom="24dp"/>
 
-        <!-- Info Box -->
-        <androidx.cardview.widget.CardView
+        <!-- Instruction Steps Card -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="0dp"
-            app:cardBackgroundColor="@color/colorSurfaceElevated"
-            android:layout_marginBottom="24dp"
-            android:padding="16dp">
+            android:orientation="vertical"
+            android:background="@drawable/bg_rounded_yellow_light"
+            android:padding="20dp"
+            android:layout_marginBottom="24dp">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="RECOMMENDED SETTING"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/colorTextYellow"
+                android:layout_marginBottom="16dp"
+                android:letterSpacing="0.05"/>
 
+            <!-- Step 1 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="14dp">
+                
+                <TextView
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:background="@drawable/bg_step_circle_yellow"
+                    android:text="1"
+                    android:gravity="center"
+                    android:textColor="@color/colorStepTextWhite"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginEnd="14dp"/>
+                
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Tap 'Open Settings' below"
+                    android:textColor="@color/colorTextInstruction"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif-medium"/>
+            </LinearLayout>
+
+            <!-- Step 2 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="14dp">
+
+                <TextView
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:background="@drawable/bg_step_circle_yellow"
+                    android:text="2"
+                    android:gravity="center"
+                    android:textColor="@color/colorStepTextWhite"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginEnd="14dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Select 'All Apps' in the dropdown"
+                    android:textColor="@color/colorTextInstruction"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif-medium"/>
+            </LinearLayout>
+            
+            <!-- Step 3 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
 
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@android:drawable/ic_dialog_info"
-                    android:contentDescription="@string/battery_optimization_title"
-                    app:tint="@color/colorAccent"
-                    android:layout_marginEnd="12dp" />
+                <TextView
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:background="@drawable/bg_step_circle_yellow"
+                    android:text="3"
+                    android:gravity="center"
+                    android:textColor="@color/colorStepTextWhite"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginEnd="14dp"/>
 
                 <TextView
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/battery_optimization_info"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="13sp"
-                    android:lineSpacingMultiplier="1.15" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Buttons -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="end">
-
-            <!-- Primary Button -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnOpenSettings"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/open_settings"
-                android:textColor="@android:color/white"
-                android:textSize="15sp"
-                android:textStyle="bold"
-                app:backgroundTint="@color/colorAccent"
-                app:cornerRadius="12dp"
-                android:paddingVertical="14dp"
-                android:layout_marginBottom="12dp"
-                style="@style/Widget.MaterialComponents.Button" />
-
-            <!-- Secondary Buttons Row -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnNotNow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/not_now"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="14sp"
-                    app:backgroundTint="@android:color/transparent"
-                    android:paddingVertical="12dp"
-                    android:layout_marginEnd="6dp"
-                    style="@style/Widget.MaterialComponents.Button.TextButton" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnDontShow"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/dont_show_again"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="14sp"
-                    app:backgroundTint="@android:color/transparent"
-                    android:paddingVertical="12dp"
-                    android:layout_marginStart="6dp"
-                    style="@style/Widget.MaterialComponents.Button.TextButton" />
+                    android:text="Find 'Netspeed' > Don't Optimize"
+                    android:textColor="@color/colorTextInstruction"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif-bold"/>
             </LinearLayout>
         </LinearLayout>
+
+        <!-- Buttons -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenSettings"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="@string/open_settings"
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:fontFamily="sans-serif-medium"
+            app:cornerRadius="16dp"
+            app:backgroundTint="#F59E0B"
+            android:layout_marginBottom="8dp"/>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDontShowAgain"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/dont_show_again"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:backgroundTint="@android:color/transparent"
+            app:rippleColor="#FEF3C7"
+            style="@style/Widget.MaterialComponents.Button.TextButton"/>
+
     </LinearLayout>
-</LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

@@ -15,6 +15,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.TrafficStats
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -40,6 +42,10 @@ class SpeedService : Service() {
     private var lastRx = 0L
     private var lastTx = 0L
     private var tickCount = 0
+    
+    // Real-time accumulator for immediate alerts
+    private var approxMobileUsage = 0L
+    private var lastNetworkStatsUpdate = 0L
 
     private val channelId = Constants.SPEED_CHANNEL_ID
     private val alertChannelId = Constants.ALERT_CHANNEL_ID
@@ -49,7 +55,7 @@ class SpeedService : Service() {
 
     private lateinit var prefs: SharedPreferences
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+    private val serviceScope = CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
     // ===== DENSITY-INDEPENDENT ICON SIZE: Uses dp instead of fixed pixels =====
     private val optimalIconSize: Int by lazy {
@@ -114,17 +120,32 @@ class SpeedService : Service() {
 
     private val runnable = object : Runnable {
         override fun run() {
-            serviceScope.launch {
-                try {
-                    updateNotificationDataSuspend()
-                } catch (e: Exception) {
-                    // Log potential errors from data fetching or notification update
-                    e.printStackTrace()
+            // Update notification UI only if screen is on to save battery
+            if (isScreenOn) {
+                serviceScope.launch {
+                    try {
+                        updateNotificationDataSuspend()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
-            if (tickCount % 5 == 0) checkDataAlerts()
-            tickCount++
-            handler.postDelayed(this, Constants.UPDATE_INTERVAL_MS)
+
+            // checkDataAlerts runs every 5th tick.
+            // If screen is ON (interval 1s), checks every 5s.
+            // If screen is OFF (interval 10s, see below), checks every 50s.
+            // This might be too slow for high speed downloads.
+            // Let's ensure we check frequently enough.
+            if (isScreenOn) {
+                 // Check alerts every tick (1s) for immediate feedback
+                 checkDataAlerts()
+                 tickCount++
+                 handler.postDelayed(this, Constants.UPDATE_INTERVAL_MS)
+            } else {
+                // Screen OFF: Check alerts every 10 seconds directly
+                checkDataAlerts()
+                handler.postDelayed(this, 10000L) 
+            }
         }
     }
 
@@ -135,11 +156,11 @@ class SpeedService : Service() {
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     isScreenOn = false
-                    stopUpdates()
+                    // Don't stop updates entirely, just slow them down (handled in runnable)
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     isScreenOn = true
-                    startUpdates()
+                    startUpdates() // Kickstart immediately to refresh UI
                 }
             }
         }
@@ -207,66 +228,158 @@ class SpeedService : Service() {
     }
 
     private fun checkDataAlerts() {
-        if (!prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)) return
+        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+        if (!isAlertEnabled) {
+            return
+        }
 
         serviceScope.launch {
-            if (!hasUsageStatsPermission()) return@launch
+            try {
+                val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
+                if (limitMb <= 0f) {
+                    // Log once every ~5 minutes
+                    if (tickCount % 300 == 0) {
+                        android.util.Log.w("SpeedService", "checkDataAlerts: Data limit not set (limitMb=$limitMb)")
+                    }
+                    return@launch
+                }
 
-            val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
-            if (limitMb <= 0f) return@launch
+                val todayStr = try {
+                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                } catch (e: Exception) {
+                    android.util.Log.e("SpeedService", "Error formatting date", e)
+                    ""
+                }
+                val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
 
-            val todayStr = try {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                if (todayStr.isNotEmpty() && todayStr != lastChecked) {
+                    android.util.Log.d("SpeedService", "New day detected, resetting alerts. Today: $todayStr, Last: $lastChecked")
+                    prefs.edit().putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
+                        .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                        .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false).apply()
+                    // Reset estimator for new day
+                    approxMobileUsage = 0L
+                }
+
+                val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+
+                if (alert80 && alert100) {
+                    // Both alerts already triggered today
+                    return@launch
+                }
+
+                val limitBytes = (limitMb * 1024 * 1024).toLong()
+                if (limitBytes <= 0) {
+                    android.util.Log.w("SpeedService", "checkDataAlerts: Invalid limitBytes=$limitBytes")
+                    return@launch
+                }
+
+                // Get mobile data usage - works with or without Usage Stats permission
+                val hasPermission = hasUsageStatsPermission()
+                val mobileUsage = if (hasPermission) {
+                    // Use NetworkStats if permission is granted (more accurate)
+                    val (mobile, _) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
+                    mobile
+                } else {
+                    // Use manual tracking if permission is not granted
+                    val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+                    val manualMobile = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
+                    
+                    // Log fallback mode once every ~5 minutes
+                    if (tickCount % 300 == 0) {
+                        android.util.Log.i("SpeedService", "checkDataAlerts: Using manual tracking (no Usage Stats permission). Manual=${formatUsage(manualMobile)}, Approx=${formatUsage(approxMobileUsage)}")
+                    }
+                    
+                    manualMobile
+                }
+                
+                // Use the higher of tracked usage or our real-time estimate
+                // This ensures we catch alerts even if tracking lags behind
+                val effectiveUsage = maxOf(mobileUsage, approxMobileUsage)
+                
+                // Update approxMobileUsage to track from baseline
+                if (mobileUsage > approxMobileUsage) {
+                    approxMobileUsage = mobileUsage
+                }
+
+                val percentage = if (limitBytes > 0) {
+                    (effectiveUsage.toDouble() / limitBytes.toDouble()) * 100
+                } else {
+                    0.0
+                }
+                
+                // Log usage status periodically (every ~60 seconds when screen on)
+                if (tickCount % 60 == 0) {
+                    val permStatus = if (hasPermission) "NetworkStats" else "Manual"
+                    android.util.Log.d("SpeedService", "Alert Check [$permStatus]: Usage=${formatUsage(effectiveUsage)} / Limit=${formatUsage(limitBytes)} (${String.format(Locale.US, "%.1f", percentage)}%). 80%=$alert80, 100%=$alert100")
+                }
+
+                if (percentage >= 100 && !alert100) {
+                    android.util.Log.i("SpeedService", "🚨 Triggering 100% Alert: Usage=${formatUsage(effectiveUsage)}, Limit=${formatUsage(limitBytes)}")
+                    // Removed Toast as per request
+                    sendAlertNotification(
+                        "Daily data limit reached!", 
+                        "You've used ${formatUsage(effectiveUsage)} of your ${formatUsage(limitBytes)} daily limit."
+                    )
+                    prefs.edit().putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true).apply()
+                } else if (percentage >= 80 && !alert80 && !alert100) {
+                    android.util.Log.i("SpeedService", "⚠️ Triggering 80% Alert: Usage=${formatUsage(effectiveUsage)}, Limit=${formatUsage(limitBytes)}")
+                     // Removed Toast as per request
+                    sendAlertNotification(
+                        "Data usage warning", 
+                        "You've used ${formatUsage(effectiveUsage)} (80%) of your ${formatUsage(limitBytes)} daily limit."
+                    )
+                    prefs.edit().putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true).apply()
+                }
             } catch (e: Exception) {
-                android.util.Log.e("SpeedService", "Error formatting date", e)
-                ""
-            }
-            val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
-
-            if (todayStr.isNotEmpty() && todayStr != lastChecked) {
-                prefs.edit().putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
-                    .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                    .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false).apply()
-            }
-
-            val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-            val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-
-            if (alert80 && alert100) return@launch
-
-            val limitBytes = (limitMb * 1024 * 1024).toLong()
-            if (limitBytes <= 0) return@launch
-
-            val (mobileUsage, _) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
-
-            val percentage = if (limitBytes > 0) {
-                (mobileUsage.toDouble() / limitBytes.toDouble()) * 100
-            } else {
-                0.0
-            }
-
-            if (percentage >= 100 && !alert100) {
-                sendAlertNotification("Daily limit reached", "You have reached your daily data limit.")
-                prefs.edit().putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true).apply()
-            } else if (percentage >= 80 && !alert80 && !alert100) {
-                sendAlertNotification("Data Warning", "You've used 80% of your daily data limit.")
-                prefs.edit().putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true).apply()
+                android.util.Log.e("SpeedService", "Error in checkDataAlerts", e)
             }
         }
     }
 
     private fun sendAlertNotification(title: String, message: String) {
-        val notification = NotificationCompat.Builder(this, alertChannelId)
-            .setSmallIcon(R.drawable.ic_speed)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(getOpenAppIntent())
-            .build()
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        // Use a fixed notification ID for alerts to avoid collisions
-        manager?.notify(Constants.NOTIFICATION_ID + 2, notification)
+        try {
+            // Ensure the alert channel exists
+            createAlertChannel()
+            
+            val notification = NotificationCompat.Builder(this, alertChannelId)
+                .setSmallIcon(R.drawable.ic_speed)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setDefaults(Notification.DEFAULT_ALL)
+                .setAutoCancel(true)
+                .setContentIntent(getOpenAppIntent())
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
+                
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (manager == null) {
+                android.util.Log.e("SpeedService", "NotificationManager is null, cannot send alert")
+                return
+            }
+            
+            // Check if notification channel is enabled (Android 8+)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = manager.getNotificationChannel(alertChannelId)
+                if (channel == null) {
+                    android.util.Log.e("SpeedService", "Alert notification channel not found, recreating...")
+                    createAlertChannel()
+                } else if (channel.importance == NotificationManager.IMPORTANCE_NONE) {
+                    android.util.Log.w("SpeedService", "Alert notification channel is disabled by user")
+                }
+            }
+            
+            // Use unique ID to force new notification each time
+            val uniqueId = (System.currentTimeMillis() % 100000).toInt() + 100
+            manager.notify(uniqueId, notification)
+            android.util.Log.i("SpeedService", "Alert notification sent: $title")
+        } catch (e: Exception) {
+            android.util.Log.e("SpeedService", "Failed to send alert notification", e)
+        }
     }
 
     // Refactored to be a suspend function to run network operations on a background thread
@@ -303,26 +416,90 @@ class SpeedService : Service() {
         if (rx != -1L) lastRx = rx
         if (tx != -1L) lastTx = tx
 
-        val (speedVal, unitVal) = formatSpeed(totalBytes)
+        // Real-Time Alert Triggering
+        // Check if we are on mobile data
+        val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val isMobile = cm?.activeNetwork?.let { net ->
+             cm.getNetworkCapabilities(net)?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+        } ?: false
+
+        if (isMobile && totalBytes > 0) {
+            approxMobileUsage += totalBytes
+            
+            val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
+            if (limitMb > 0f) {
+                val limitBytes = (limitMb * 1024 * 1024).toLong()
+                
+                // If accumulated estimated usage crosses 80%, force a check immediately
+                val estPercentage = (approxMobileUsage.toDouble() / limitBytes.toDouble()) * 100
+                val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                
+                if ((estPercentage >= 80 && !alert80) || (estPercentage >= 100 && !alert100)) {
+                    // Force Check Now
+                    checkDataAlerts()
+                }
+            }
+        }
+
         val details = StringBuilder()
-
+        // NetworkUsageHelper call moved to IO dispatcher
         if (hasUsageStatsPermission()) {
-            // NetworkUsageHelper call moved to IO dispatcher
             val (mobile, wifi) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
-            details.append("Mobile: ${formatUsage(mobile)} | WiFi: ${formatUsage(wifi)}")
+            details.append("Mobile: ${formatUsage(mobile)}")
+            
+            // Show percentage if limit is set (Helpful for debugging alerts)
+            val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
+            if (limitMb > 0f) {
+                 val limitBytes = (limitMb * 1024 * 1024).toLong()
+                 val percentage = (mobile.toDouble() / limitBytes.toDouble()) * 100
+                 val a80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                 val a100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                 details.append(String.format(Locale.US, " (%.0f%%) [%s/%s]", percentage, if(a80)"T" else "F", if(a100)"T" else "F"))
+            }
+            
+            details.append(" | WiFi: ${formatUsage(wifi)}")
         } else {
-            details.append("Tap to grant permission")
+             // Fallback: Use manually tracked data
+             val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+             val mobile = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
+             val wifi = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
+             details.append("Mobile: ${formatUsage(mobile)} | WiFi: ${formatUsage(wifi)}")
+             
+             // Track current delta
+             if (totalBytes > 0) {
+                  trackManualUsage(rxDelta + txDelta, todayKey)
+             }
         }
 
-        var speedTitle = "$speedVal $unitVal"
-        if (prefs.getBoolean(Constants.PREF_SHOW_UP_DOWN, false)) {
-            speedTitle += "   ↓ ${formatSimple(rxDelta)}   ↑ ${formatSimple(txDelta)}"
+        val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
+        val notification = if (showSpeed) {
+            val (speedVal, unitVal) = formatSpeed(totalBytes)
+            var speedTitle = "$speedVal $unitVal"
+            if (prefs.getBoolean(Constants.PREF_SHOW_UP_DOWN, false)) {
+                speedTitle += "   ↓ ${formatSimple(rxDelta)}   ↑ ${formatSimple(txDelta)}"
+            }
+            if (prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)) {
+                speedTitle += "   \uD83D\uDCF6 ${getWifiSignal()}%"
+            }
+            buildNotification(speedTitle, speedVal, unitVal, details.toString())
+        } else {
+            // When speed is hidden, use the MONITOR channel with MIN importance (collapsed)
+            // This satisfies the foreground service requirement while minimizing visibility
+            NotificationCompat.Builder(this@SpeedService, Constants.MONITOR_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_speed)
+                .setContentTitle("Data monitoring enabled")
+                .setContentText(details.toString())
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setPriority(NotificationCompat.PRIORITY_MIN) // Minimized
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setContentIntent(getOpenAppIntent())
+                .setOnlyAlertOnce(true)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET) // Hide from lockscreen if possible
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .build()
         }
-        if (prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)) {
-            speedTitle += "   \uD83D\uDCF6 ${getWifiSignal()}%"
-        }
-
-        val notification = buildNotification(speedTitle, speedVal, unitVal, details.toString())
 
         // Post notification update back to the Main thread (or directly if NotificationManager is thread-safe, which it is)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -391,13 +568,14 @@ class SpeedService : Service() {
             .setNumber(0)
             .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(getOpenAppIntent())
             .setOnlyAlertOnce(true)
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setWhen(serviceStartTime)
             .setShowWhen(false)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
@@ -415,10 +593,37 @@ class SpeedService : Service() {
         return PendingIntent.getActivity(this, 0, intent, flags)
     }
 
+    private fun trackManualUsage(bytes: Long, todayKey: String) {
+        try {
+            val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = cm.activeNetwork
+            val caps = cm.getNetworkCapabilities(activeNetwork) ?: return
+            
+            val isWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            val isMobile = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+            
+            if (isMobile) {
+                synchronized(prefs) {
+                    val current = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
+                    prefs.edit().putLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, current + bytes).apply()
+                }
+            } else if (isWifi) {
+                synchronized(prefs) {
+                    val current = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
+                    prefs.edit().putLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, current + bytes).apply()
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore errors in tracking
+        }
+    }
+
     private fun createSpeedIcon(speed: String, unit: String): IconCompat {
         // Check cache
         val cacheKey = "$speed|$unit"
-        iconCache[cacheKey]?.let { return it }
+        synchronized(iconCache) {
+            iconCache[cacheKey]?.let { return it }
+        }
 
         // Fix: LRU cache automatically removes eldest entries when size exceeds limit
         // No need to manually clear the entire cache
@@ -463,7 +668,9 @@ class SpeedService : Service() {
             canvas.drawText(unit, size / 2f, size * 0.95f, paint)
 
             val iconCompat = IconCompat.createWithBitmap(bitmap)
-            iconCache[cacheKey] = iconCompat
+            synchronized(iconCache) {
+                iconCache[cacheKey] = iconCompat
+            }
 
             return iconCompat
         } catch (e: Exception) {
@@ -475,19 +682,32 @@ class SpeedService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Internet Speed", NotificationManager.IMPORTANCE_LOW)
-            channel.setSound(null, null)
-            channel.enableVibration(false)
-            channel.setShowBadge(false)
-            channel.lockscreenVisibility = Notification.VISIBILITY_SECRET
             val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            
+            // Channel 1: Internet Speed (Low Importance - shows icon)
+            val speedChannel = NotificationChannel(channelId, "Internet Speed", NotificationManager.IMPORTANCE_LOW)
+            speedChannel.setSound(null, null)
+            speedChannel.enableVibration(false)
+            speedChannel.setShowBadge(false)
+            speedChannel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            manager?.createNotificationChannel(speedChannel)
+            
+            // Channel 2: Data Monitor (Min Importance - collapsed, no icon)
+            val monitorChannel = NotificationChannel(Constants.MONITOR_CHANNEL_ID, "Data Monitor", NotificationManager.IMPORTANCE_MIN)
+            monitorChannel.setSound(null, null)
+            monitorChannel.enableVibration(false)
+            monitorChannel.setShowBadge(false)
+            monitorChannel.lockscreenVisibility = Notification.VISIBILITY_SECRET
+            manager?.createNotificationChannel(monitorChannel)
         }
     }
 
     private fun createAlertChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(alertChannelId, "Data Usage Alerts", NotificationManager.IMPORTANCE_HIGH)
+            channel.enableVibration(true)
+            channel.setVibrationPattern(longArrayOf(0, 500, 200, 500))
+            channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
@@ -507,11 +727,13 @@ class SpeedService : Service() {
         // Restart service if it was killed system-side but user wants it on
         try {
             val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
+            val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
             // Safety Check: Only restart if the service has lived for at least 2 seconds.
             // This prevents an infinite crash loop if the service crashes immediately upon startup.
             val livedLongEnough = (System.currentTimeMillis() - serviceStartTime) > 2000
 
-            if (showSpeed && livedLongEnough) {
+            // Restart if either speed display OR alerts are enabled
+            if ((showSpeed || isAlertEnabled) && livedLongEnough) {
                 // Send broadcast to restart service
                 val restartIntent = Intent(applicationContext, BootReceiver::class.java)
                 restartIntent.action = "com.krishna.netspeedlite.RESTART_SERVICE"

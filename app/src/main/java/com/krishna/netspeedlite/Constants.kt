@@ -21,8 +21,9 @@ object Constants {
     const val PREF_BATTERY_OPT_DISMISSED = "battery_opt_dismissed"
 
     // Notifications
-    const val SPEED_CHANNEL_ID = "speed_channel_v7"
-    const val ALERT_CHANNEL_ID = "data_alert_channel"
+    const val SPEED_CHANNEL_ID = "speed_channel_v11"
+    const val MONITOR_CHANNEL_ID = "monitor_channel_v1"
+    const val ALERT_CHANNEL_ID = "data_alert_channel_v3"
     const val NOTIFICATION_ID = 1
 
     // Service Intervals
@@ -31,4 +32,8 @@ object Constants {
 
     // Icon Cache
     const val MAX_ICON_CACHE_SIZE = 15
+    
+    // Manual Tracking Keys (Prefix + yyyyMMdd)
+    const val PREF_MANUAL_MOBILE_PREFIX = "manual_mobile_"
+    const val PREF_MANUAL_WIFI_PREFIX = "manual_wifi_"
 }

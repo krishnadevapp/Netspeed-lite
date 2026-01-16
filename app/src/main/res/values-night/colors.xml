@@ -55,6 +55,24 @@
     <color name="colorErrorText">#FF8A80</color>
     <color name="colorStarTint">#FFEB3B</color>
 
+    <!-- Dialog Styling - Blue Theme (Dark) -->
+    <color name="colorSurfaceBlueTint">#1F242F</color> <!-- Dark Blue-Grey -->
+    <color name="colorStrokeBlue">#334155</color>
+    <color name="colorTextBlue">#93C5FD</color>  <!-- Lighter Blue for text -->
+    <color name="colorStepCircleBlue">#3B82F6</color>
+    <color name="colorIconBgBlue">#2A303C</color>
+
+    <!-- Dialog Styling - Yellow Theme (Dark) -->
+    <color name="colorSurfaceYellowTint">#382E1E</color> <!-- Dark Amber Background -->
+    <color name="colorStrokeYellow">#78350F</color>
+    <color name="colorTextYellow">#FCD34D</color> <!-- Lighter Amber for text -->
+    <color name="colorStepCircleYellow">#F59E0B</color>
+    <color name="colorIconBgYellow">#382E1E</color>
+    
+    <!-- Shared Dialog Colors (Dark) -->
+    <color name="colorStepTextWhite">#FFFFFF</color>
+    <color name="colorTextInstruction">#E2E2E5</color>
+
     <!-- Legacy / Unused -->
     <color name="pillDateBg">#00000000</color>
     <color name="pillDateText">#E2E2E5</color>

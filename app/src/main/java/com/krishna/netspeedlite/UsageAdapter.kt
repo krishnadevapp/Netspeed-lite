@@ -51,7 +51,8 @@ class UsageAdapter(private var usageList: List<DailyUsage> = emptyList()) :
     fun updateData(newList: List<DailyUsage>) {
         // Prevent flickering: only update if data actually changed
         if (usageList == newList) return
-        usageList = newList
+        // Create immutable copy to prevent ConcurrentModificationException
+        usageList = newList.toList()
         notifyDataSetChanged()
     }
 

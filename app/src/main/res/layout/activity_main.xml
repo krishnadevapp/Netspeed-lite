@@ -81,24 +81,6 @@
 
         </com.google.android.material.appbar.AppBarLayout>
 
-        <!-- ================= PERMISSION BUTTON ================= -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnPermission"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:text="@string/grant_usage_permission"
-            android:textColor="@android:color/white"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            app:backgroundTint="@color/colorAccent"
-            app:cornerRadius="12dp"
-            android:paddingVertical="14dp"
-            android:visibility="gone"
-            android:elevation="2dp"
-            style="@style/Widget.MaterialComponents.Button"
-            tools:visibility="visible"/>
-
         <!-- ================= HEADER ROW (Subtle & Aligned) ================= -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
@@ -124,7 +106,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1.2"
                     android:gravity="start"
-                    android:text="Date"
+                    android:text="@string/header_date"
                     android:textColor="?android:attr/textColorSecondary"
                     android:fontFamily="sans-serif"
                     android:textSize="12sp"
@@ -136,7 +118,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="Mobile"
+                    android:text="@string/header_mobile"
                     android:textColor="?android:attr/textColorSecondary"
                     android:fontFamily="sans-serif"
                     android:textSize="12sp"
@@ -147,7 +129,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="WiFi"
+                    android:text="@string/header_wifi"
                     android:textColor="?android:attr/textColorSecondary"
                     android:fontFamily="sans-serif"
                     android:textSize="12sp"
@@ -158,7 +140,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:gravity="center"
-                    android:text="Total"
+                    android:text="@string/header_total"
                     android:textColor="?android:attr/textColorSecondary"
                     android:fontFamily="sans-serif"
                     android:textSize="12sp"
@@ -218,7 +200,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1.2"
-                                android:text="Last 7 Days"
+                                android:text="@string/last_7_days"
                                 android:gravity="start|center_vertical"
                                 android:textColor="?android:attr/textColorSecondary"
                                 android:fontFamily="sans-serif"
@@ -280,7 +262,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1.2"
-                                android:text="Last 30 Days"
+                                android:text="@string/last_30_days"
                                 android:gravity="start|center_vertical"
                                 android:textColor="?android:attr/textColorSecondary"
                                 android:fontFamily="sans-serif"
@@ -352,7 +334,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1.2"
-                    android:text="Total"
+                    android:text="@string/total_label"
                     android:gravity="start"
                     android:textColor="?android:attr/textColorPrimary"
                     android:fontFamily="sans-serif-medium"
@@ -400,18 +382,6 @@
 
     </LinearLayout>
 
-    <!-- ================= RIGHT SIDE PANEL (Side Sheet) ================= -->
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/navView"
-        android:layout_width="320dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end"
-        android:background="?android:attr/colorBackground"
-        android:fitsSystemWindows="true">
-        
-        <!-- We will inflate the settings layout here programmatically or via include -->
-        <include layout="@layout/dialog_settings" />
 
-    </com.google.android.material.navigation.NavigationView>
 
 </androidx.drawerlayout.widget.DrawerLayout>

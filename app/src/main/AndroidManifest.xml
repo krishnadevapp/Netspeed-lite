@@ -35,6 +35,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".TermsPrivacyActivity"
+            android:exported="false"
+            android:label=""
+            android:theme="@style/Theme.NetspeedLite" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings"
+            android:theme="@style/Theme.NetspeedLite" />
+
         <service
             android:name=".SpeedService"
             android:enabled="true"
