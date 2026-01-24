@@ -9,8 +9,7 @@
     
     <!-- Primary / Brand (Muted) -->
     <color name="colorPrimary">#CBD5E1</color> <!-- Darker Soft Grey Header (Increased Greyness) -->
-    <color name="colorPrimaryContainer">#FFFFFF</color> <!-- Light container color -->
-    <color name="colorPrimaryDark">#1D4ED8</color>
+
     <color name="colorAccent">#2563EB</color> 
     
     <!-- Sections -->
@@ -25,7 +24,7 @@
     
     <!-- App Bar Specific -->
     <color name="appBarText">#111827</color>
-    <color name="toolbarGrey">#F6F7FB</color>
+
 
     <!-- Data Values (Desaturated Calm Tones) -->
     <color name="pillMobileText">#2563EB</color> <!-- Primary Blue -->
@@ -37,18 +36,12 @@
     <color name="colorStroke">#D1D5DB</color>
     
     <!-- UI Controls (Explicit Definitions for Light Mode) -->
-    <color name="radio_button_unchecked_color">#424242</color>
-    <color name="radio_button_checked_color">#2563EB</color>
-    
-    <!-- Scoped Colors for Appearance Radio Buttons -->
-    <color name="appearance_radio_checked_color">#2563EB</color>
-    <color name="appearance_radio_unchecked_color">#4A4A4A</color>
+
     
     <!-- Toggle Button Colors -->
     <color name="toggle_background_checked">#2563EB</color>
     
-    <!-- FIX: Explicit switch track colors for Light Mode -->
-    <color name="switch_track_unchecked_color">#D1D5DB</color>
+        <!-- FIX: Explicit switch track colors for Light Mode -->
     <color name="switch_thumb_color">#FFFFFF</color>
     
     <!-- ADDED: Explicit ON track color to prevent blending -->
@@ -60,28 +53,17 @@
     <color name="colorStarTint">#FBC02D</color>
 
     <!-- Dialog Styling - Blue Theme (Light) -->
-    <color name="colorSurfaceBlueTint">#F0F7FF</color>
-    <color name="colorStrokeBlue">#BFDBFE</color>
-    <color name="colorTextBlue">#1E40AF</color>
-    <color name="colorStepCircleBlue">#3B82F6</color>
+    <!-- Dialog Styling - Blue Theme (Light) -->
     <color name="colorIconBgBlue">#EEF2FF</color>
 
     <!-- Dialog Styling - Yellow Theme (Light) -->
-    <color name="colorSurfaceYellowTint">#FFFBEB</color>
-    <color name="colorStrokeYellow">#FCD34D</color>
-    <color name="colorTextYellow">#B45309</color>
+    <!-- Dialog Styling - Yellow Theme (Light) -->
     <color name="colorStepCircleYellow">#F59E0B</color>
     <color name="colorIconBgYellow">#FFFBEB</color>
     
     <!-- Shared Dialog Colors (Light) -->
-    <color name="colorStepTextWhite">#FFFFFF</color>
-    <color name="colorTextInstruction">#1F2937</color>
+    <!-- Shared Dialog Colors (Light) -->
 
     <!-- Legacy / Unused -->
-    <color name="colorFooter">#FFFFFF</color>
-    <color name="pillDateBg">#00000000</color>
-    <color name="pillDateText">#111827</color>
-    <color name="pillMobileBg">#00000000</color>
-    <color name="pillWifiBg">#00000000</color>
-    <color name="pillTotalBg">#00000000</color>
+    <!-- Legacy / Unused -->
 </resources>

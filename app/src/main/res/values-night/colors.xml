@@ -9,7 +9,7 @@
     
     <!-- Primary / Brand (Muted) -->
     <color name="colorPrimary">#2C323B</color> <!-- Increased Greyness -->
-    <color name="colorPrimaryContainer">#262B32</color>
+
     
     <!-- Text (Refined for Comfort) -->
     <color name="textPrimary">#E2E2E5</color>  <!-- Off-white, not harsh white -->
@@ -33,18 +33,12 @@
     <color name="colorStroke">#353940</color>
     
     <!-- UI Controls (Explicit Definitions for Dark Mode) -->
-    <color name="radio_button_unchecked_color">#E0E0E0</color>
-    <color name="radio_button_checked_color">#A8C7FA</color>
-    
-    <!-- Scoped Colors for Appearance Radio Buttons -->
-    <color name="appearance_radio_checked_color">#A8C7FA</color>
-    <color name="appearance_radio_unchecked_color">#BDBDBD</color>
+
     
     <!-- Toggle Button Colors - Darker for better contrast in dark mode -->
     <color name="toggle_background_checked">#3B5A8F</color> <!-- Darker blue for dark mode buttons -->
     
     <!-- FIX: Increased contrast for switch tracks -->
-    <color name="switch_track_unchecked_color">#555960</color> <!-- Lighter than bg for visibility -->
     <color name="switch_thumb_color">#E2E2E5</color>
     
     <!-- Brighter Primary Tint for ON track to contrast with dark background, but darker than thumb -->
@@ -56,28 +50,17 @@
     <color name="colorStarTint">#FFEB3B</color>
 
     <!-- Dialog Styling - Blue Theme (Dark) -->
-    <color name="colorSurfaceBlueTint">#1F242F</color> <!-- Dark Blue-Grey -->
-    <color name="colorStrokeBlue">#334155</color>
-    <color name="colorTextBlue">#93C5FD</color>  <!-- Lighter Blue for text -->
-    <color name="colorStepCircleBlue">#3B82F6</color>
+    <!-- Dialog Styling - Blue Theme (Dark) -->
     <color name="colorIconBgBlue">#2A303C</color>
 
     <!-- Dialog Styling - Yellow Theme (Dark) -->
-    <color name="colorSurfaceYellowTint">#382E1E</color> <!-- Dark Amber Background -->
-    <color name="colorStrokeYellow">#78350F</color>
-    <color name="colorTextYellow">#FCD34D</color> <!-- Lighter Amber for text -->
-    <color name="colorStepCircleYellow">#F59E0B</color>
+    <!-- Dialog Styling - Yellow Theme (Dark) -->
     <color name="colorIconBgYellow">#382E1E</color>
     
     <!-- Shared Dialog Colors (Dark) -->
-    <color name="colorStepTextWhite">#FFFFFF</color>
-    <color name="colorTextInstruction">#E2E2E5</color>
+    <!-- Shared Dialog Colors (Dark) -->
 
     <!-- Legacy / Unused -->
-    <color name="pillDateBg">#00000000</color>
-    <color name="pillDateText">#E2E2E5</color>
-    <color name="pillMobileBg">#00000000</color>
-    <color name="pillWifiBg">#00000000</color>
-    <color name="pillTotalBg">#00000000</color>
+    <!-- Legacy / Unused -->
     
 </resources>

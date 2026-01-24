@@ -37,7 +37,7 @@ class TermsPrivacyActivity : AppCompatActivity() {
         textContent.text = Html.fromHtml(getPrivacyBody(), Html.FROM_HTML_MODE_COMPACT)
         
         // Dynamic last updated date
-        tvLastUpdated.text = "Last Updated: January 15, 2026"
+        tvLastUpdated.text = getString(R.string.last_updated_value)
         
         textContent.movementMethod = LinkMovementMethod.getInstance()
     }

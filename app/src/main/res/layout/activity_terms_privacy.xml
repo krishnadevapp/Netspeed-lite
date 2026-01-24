@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="?android:attr/colorBackground"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="true"
+    tools:ignore="Overdraw"
+    tools:context=".TermsPrivacyActivity">
 
     <!-- TOOLBAR (Matching Home Screen Style) -->
     <com.google.android.material.appbar.AppBarLayout
@@ -94,30 +97,20 @@
                     android:orientation="vertical"
                     android:padding="24dp">
 
-                    <LinearLayout
+                    <TextView
+                        android:id="@+id/tvTitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginBottom="12dp">
-
-                        <ImageView
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:src="@drawable/ic_security"
-                            android:layout_marginEnd="12dp"
-                            app:tint="?attr/colorAccent"/>
-
-                        <TextView
-                            android:id="@+id/tvTitle"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:textSize="28sp"
-                            android:textStyle="bold"
-                            android:textColor="?attr/colorAccent"
-                            android:fontFamily="sans-serif-black"
-                            android:text="Privacy Policy"/>
-                    </LinearLayout>
+                        android:textSize="28sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorAccent"
+                        android:fontFamily="sans-serif-black"
+                        android:text="@string/privacy_policy"
+                        android:layout_marginBottom="12dp"
+                        app:drawableStartCompat="@drawable/ic_security"
+                        android:drawablePadding="12dp"
+                        app:drawableTint="?attr/colorAccent"
+                        android:gravity="center_vertical"/>
 
                     <TextView
                         android:id="@+id/tvLastUpdated"
@@ -125,7 +118,7 @@
                         android:layout_height="wrap_content"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
-                        android:text="Last updated: January 15, 2026"
+                        android:text="@string/last_updated_value"
                         android:layout_marginBottom="24dp"/>
 
                     <View

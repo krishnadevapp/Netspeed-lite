@@ -17,7 +17,7 @@ android {
         targetSdk = 35
 
         // ⭐ UPDATED: Version Code must be higher for Play Store update
-        versionCode = 17
+        versionCode = 18
 
         // ⭐ UPDATED: Version Name to reflect new release
         versionName = "1.0.1"
@@ -63,7 +63,10 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
 
     // In-App Review API
-    implementation("com.google.android.play:review-ktx:2.0.1")
+    implementation(libs.play.review.ktx)
+
+    // WorkManager for background tasks
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

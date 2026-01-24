@@ -2,9 +2,44 @@
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
-    android:viewportHeight="24"
-    android:tint="#FFFFFF">
-  <path
-      android:fillColor="@android:color/white"
-      android:pathData="M20.38,8.57l-1.23,1.85a8,8 0 0,1 -0.22,7.58H5.07A8,8 0 0,1 15.58,6.85l1.85,-1.23A10,10 0 0,0 3.35,19a2,2 0 0,0 1.72,1h13.85a2,2 0 0,0 1.74,-1A10,10 0 0,0 20.38,8.57zM12,6a1,1 0 0,0 -1,1v5a1,1 0 0,0 2,0V7A1,1 0 0,0 12,6z"/>
+    android:viewportHeight="24">
+    
+    <group
+        android:scaleX="1.0"
+        android:scaleY="0.85"
+        android:pivotX="12"
+        android:pivotY="12">
+        
+        <!-- Up Arrow (Left, Lower) - Scaled down ~75% for padding -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M8.75,16.5 
+            L8.75,10.6 
+            L6.8,10.6 
+            C6.5,10.6 6.3,10.4 6.5,10.1 
+            L9.35,6.6 
+            C9.5,6.4 9.9,6.4 10.05,6.6 
+            L12.9,10.1 
+            C13.1,10.4 12.9,10.6 12.6,10.6 
+            L10.65,10.6 
+            L10.65,16.5 
+            C10.65,17 10.2,17.4 9.7,17.4 
+            C9.2,17.4 8.75,17 8.75,16.5 Z"/>
+
+        <!-- Down Arrow (Right, Higher) - Scaled down ~75% for padding -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M14.8,8 
+            L14.8,13.9 
+            L16.75,13.9 
+            C17.05,13.9 17.25,14.1 17.05,14.4 
+            L14.2,17.9 
+            C14.05,18.1 13.65,18.1 13.5,17.9 
+            L10.65,14.4 
+            C10.45,14.1 10.65,13.9 10.95,13.9 
+            L12.9,13.9 
+            L12.9,8 
+            C12.9,7.5 13.35,7.1 13.85,7.1 
+            C14.35,7.1 14.8,7.5 14.8,8 Z"/>
+    </group>
 </vector>

@@ -1,0 +1,10 @@
+<resources>
+    <string name="permission_title">Allow Notifications?</string>
+    <string name="permission_rationale">To show your live internet speed in the status bar, Netspeed Lite needs permission to post notifications.</string>
+    <string name="grant">Allow</string>
+    <string name="deny">Not Now</string>
+    <string name="permission_required">Notifications Disabled</string>
+    <string name="permission_settings_message">The speed indicator cannot appear because notifications are disabled. Please enable them in Settings.</string>
+    <string name="go_to_settings">Settings</string>
+
+</resources>

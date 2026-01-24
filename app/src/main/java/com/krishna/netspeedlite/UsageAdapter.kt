@@ -3,6 +3,7 @@ package com.krishna.netspeedlite
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.krishna.netspeedlite.databinding.ItemUsageRowBinding
 import java.text.SimpleDateFormat
@@ -49,11 +50,21 @@ class UsageAdapter(private var usageList: List<DailyUsage> = emptyList()) :
     override fun getItemCount() = usageList.size
 
     fun updateData(newList: List<DailyUsage>) {
-        // Prevent flickering: only update if data actually changed
-        if (usageList == newList) return
-        // Create immutable copy to prevent ConcurrentModificationException
+        val diffResult = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = usageList.size
+            override fun getNewListSize() = newList.size
+
+            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                return usageList[oldItemPosition].date == newList[newItemPosition].date
+            }
+
+            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                return usageList[oldItemPosition] == newList[newItemPosition]
+            }
+        })
+        
         usageList = newList.toList()
-        notifyDataSetChanged()
+        diffResult.dispatchUpdatesTo(this)
     }
 
     private fun formatData(bytes: Long, showInMbOnly: Boolean): String {

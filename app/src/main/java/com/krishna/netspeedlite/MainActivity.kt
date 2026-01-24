@@ -4,47 +4,29 @@ import android.app.AppOpsManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.ConnectivityManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
-import android.os.PowerManager
-import android.provider.Settings
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.AutoCompleteTextView
-import android.widget.LinearLayout
-import android.widget.RadioGroup
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.getSystemService
+import androidx.core.content.edit
 import androidx.core.view.GravityCompat
-import androidx.core.view.isEmpty
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.materialswitch.MaterialSwitch
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.play.core.review.ReviewManagerFactory
 import com.krishna.netspeedlite.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,6 +35,9 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
@@ -64,6 +49,7 @@ class MainActivity : AppCompatActivity() {
 
     // Auto-refresh timer for "Live" updates in the app
     private val refreshHandler = Handler(Looper.getMainLooper())
+
     @Volatile
     private var isRefreshing = false
     private val refreshRunnable = object : Runnable {
@@ -100,7 +86,8 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.topAppBar)
         supportActionBar?.setDisplayShowTitleEnabled(false)
 
-        networkStatsManager = getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+        networkStatsManager =
+            getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
 
         setupPermissions()
         setupUI()
@@ -116,7 +103,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Reset dismissed flag on app start so prompt can show again in new session
-        prefs.edit().putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, false).apply()
+        // Reset dismissed flag on app start so prompt can show again in new session
+        prefs.edit { putBoolean(Constants.PREF_BATTERY_OPT_DISMISSED, false) }
 
         recordAppOpen()
 
@@ -136,30 +124,43 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-
-
-
     private fun applyThemeFromPrefs() {
         try {
-            val themeMode = prefs.getInt(Constants.PREF_THEME_MODE, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+            val themeMode =
+                prefs.getInt(Constants.PREF_THEME_MODE, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
             if (AppCompatDelegate.getDefaultNightMode() != themeMode) {
                 AppCompatDelegate.setDefaultNightMode(themeMode)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Ignore theme application errors
+
         }
     }
 
     private fun startSpeedService() {
         val intent = Intent(this, SpeedService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                startForegroundService(intent)
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Failed to start foreground service", e)
-            }
-        } else {
-            startService(intent)
+        try {
+            startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start foreground service", e)
+        }
+        
+        // Schedule the watchdog worker
+        scheduleSpeedServiceWorker()
+    }
+
+    private fun scheduleSpeedServiceWorker() {
+        try {
+            val workRequest = PeriodicWorkRequestBuilder<SpeedServiceWorker>(15, TimeUnit.MINUTES)
+                .build()
+            
+            WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+                "SpeedServiceWatchdog",
+                ExistingPeriodicWorkPolicy.KEEP, // Keep existing if already scheduled
+                workRequest
+            )
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to schedule worker", e)
         }
     }
 
@@ -174,6 +175,7 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
+
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -192,7 +194,6 @@ class MainActivity : AppCompatActivity() {
 
 
     }
-
 
 
     override fun onPause() {
@@ -217,21 +218,82 @@ class MainActivity : AppCompatActivity() {
     // Replaced with OnBackPressedCallback
     // override fun onBackPressed() { ... }
 
+    private val requestPermissionLauncher =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                // Permission granted
+
+            } else {
+                // Permission denied
+                Log.w("MainActivity", "Notification permission denied")
+                // Check if we should show a rationale (user denied but didn't check "Don't ask again")
+                // Note: In modern Android, if the user denies twice, shouldShowRequestPermissionRationale returns false (same as "Don't ask again")
+                // So if it's false here, it implies permanent denial OR it's the first time (but we just asked, so it's permanent)
+                if (!shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS)) {
+                    showSettingsDialog()
+                }
+            }
+        }
+
     private fun setupPermissions() {
-        // Request notification permission for Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            when {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    // Permission is already granted
+                }
+                shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS) -> {
+                    // Show rationale
+                    showPermissionRationale()
+                }
+                else -> {
+                    // Request permission directly
+                    requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
             }
         }
     }
 
+    private fun showPermissionRationale() {
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.permission_title)
+            .setMessage(R.string.permission_rationale)
+            .setPositiveButton(R.string.grant) { _, _ ->
+                requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+            .setNegativeButton(R.string.deny, null)
+            .show()
+    }
+
+    private fun showSettingsDialog() {
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.permission_required)
+            .setMessage(R.string.permission_settings_message)
+            .setPositiveButton(R.string.go_to_settings) { _, _ ->
+                try {
+                    val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.fromParts("package", packageName, null)
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error opening settings", e)
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
 
 
     private fun hasUsageStatsPermission(): Boolean {
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
         } else {
             appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
         }
@@ -246,7 +308,6 @@ class MainActivity : AppCompatActivity() {
             isNestedScrollingEnabled = false
         }
     }
-
 
 
     private fun refreshData() {
@@ -278,7 +339,20 @@ class MainActivity : AppCompatActivity() {
                         val endTime = calendar.timeInMillis
 
                         val (m, w) = if (hasUsageStatsPermission()) {
-                            NetworkUsageHelper.getUsageInRange(applicationContext, startTime, endTime)
+                            val (mob, wifi) = NetworkUsageHelper.getUsageInRange(applicationContext, startTime, endTime)
+                            
+                            // SYNC: Persist system data to manual cache so it remains available if permission is revoked
+                            try {
+                                val dateKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date(startTime))
+                                prefs.edit { 
+                                    putLong(Constants.PREF_MANUAL_MOBILE_PREFIX + dateKey, mob)
+                                    putLong(Constants.PREF_MANUAL_WIFI_PREFIX + dateKey, wifi)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Error syncing data to cache", e)
+                            }
+                            
+                            Pair(mob, wifi)
                         } else {
                             val manualData = fetchManualData(calendar)
                             Pair(manualData.mobileBytes, manualData.wifiBytes)
@@ -310,7 +384,11 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error refreshing data", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, getString(R.string.error_loading_data), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.error_loading_data),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             } finally {
                 isRefreshing = false
@@ -350,14 +428,14 @@ class MainActivity : AppCompatActivity() {
         // This prevents duplicate notifications when both MainActivity and SpeedService check simultaneously
         // MainActivity will only show alerts if SpeedService is not running
         val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
-        if (showSpeed) {
-            // SpeedService is running, let it handle alerts
+        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+        
+        // If SpeedService is running (either speed or alerts enabled), let it handle alerts
+        if (showSpeed || isAlertEnabled) {
             return
         }
 
-        // Only check alerts if SpeedService is not running
-        val isEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
-        if (!isEnabled) return
+        if (!isAlertEnabled) return
 
         val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
         if (limitMb <= 0f) return
@@ -375,11 +453,11 @@ class MainActivity : AppCompatActivity() {
             val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
 
             if (todayStr.isNotEmpty() && todayStr != lastChecked) {
-                prefs.edit()
-                    .putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
-                    .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                    .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                    .apply()
+                prefs.edit {
+                    putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
+                    putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                    putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                }
             }
 
             val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
@@ -387,13 +465,19 @@ class MainActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 if (!alert100 && usageMb >= limitMb) {
-                    val message = getString(R.string.limit_reached_message, String.format(Locale.US, "%.0f", limitMb))
+                    val message = getString(
+                        R.string.limit_reached_message,
+                        String.format(Locale.US, "%.0f", limitMb)
+                    )
                     showNotification(getString(R.string.daily_limit_reached), message)
-                    prefs.edit().putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true).apply()
+                    prefs.edit { putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true) }
                 } else if (!alert80 && !alert100 && usageMb >= (limitMb * 0.8)) {
-                    val message = getString(R.string.limit_warning_message, String.format(Locale.US, "%.1f", usageMb))
+                    val message = getString(
+                        R.string.limit_warning_message,
+                        String.format(Locale.US, "%.1f", usageMb)
+                    )
                     showNotification(getString(R.string.daily_limit_warning), message)
-                    prefs.edit().putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true).apply()
+                    prefs.edit { putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true) }
                 }
             }
         }
@@ -401,7 +485,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showNotification(title: String, message: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
                 return
             }
         }
@@ -409,10 +497,11 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent: PendingIntent =
+            PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val builder = NotificationCompat.Builder(this, Constants.ALERT_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_speed)
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -420,7 +509,8 @@ class MainActivity : AppCompatActivity() {
             .setAutoCancel(true)
 
         try {
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             notificationManager?.notify(Constants.NOTIFICATION_ID + 1, builder.build())
         } catch (e: Exception) {
             Log.e("MainActivity", "Error showing notification.", e)
@@ -428,16 +518,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Data Usage Alerts"
-            val descriptionText = "Notifications for daily data limits"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(Constants.ALERT_CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.createNotificationChannel(channel)
+        val name = "Data Usage Alerts"
+        val descriptionText = "Notifications for daily data limits"
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        val channel = NotificationChannel(Constants.ALERT_CHANNEL_ID, name, importance).apply {
+            description = descriptionText
         }
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.createNotificationChannel(channel)
     }
 
     private fun updateUIStats(m7: Long, w7: Long, m30: Long, w30: Long) {
@@ -455,7 +544,6 @@ class MainActivity : AppCompatActivity() {
             tvGrandTotal.text = formatData(m30 + w30)
         }
     }
-
 
 
     private fun formatData(bytes: Long): String {
@@ -479,10 +567,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun recordAppOpen() {
         val openCount = prefs.getInt(Constants.PREF_APP_OPEN_COUNT, 0) + 1
-        prefs.edit().putInt(Constants.PREF_APP_OPEN_COUNT, openCount).apply()
+        prefs.edit { putInt(Constants.PREF_APP_OPEN_COUNT, openCount) }
     }
-
-
 
 
 }

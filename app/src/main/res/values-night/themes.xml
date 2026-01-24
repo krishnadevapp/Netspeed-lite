@@ -13,7 +13,7 @@
         
         <!-- Navigation Bar (Dark Mode) -->
         <item name="android:navigationBarColor">@color/colorBackground</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
 
         <!-- Backgrounds -->
         <item name="android:colorBackground">@color/colorBackground</item>
@@ -28,7 +28,9 @@
         <!-- Components -->
         <item name="materialCardViewStyle">@style/Widget.App.CardView</item>
         <item name="materialSwitchStyle">@style/Widget.App.Switch</item>
+
         <item name="alertDialogTheme">@style/Theme.App.Dialog</item>
+        <item name="materialAlertDialogTheme">@style/Theme.App.Dialog</item>
     </style>
 
     <style name="Theme.NetspeedLite" parent="Base.Theme.NetspeedLite" />
@@ -38,8 +40,20 @@
         <item name="android:background">@drawable/bg_dialog_rounded</item>
         <item name="colorSurface">@color/colorSurface</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        
+        <!-- Fix: Explicitly define button styles to force color visibility -->
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.App.Button.TextButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.App.Button.TextButton</item>
+
         <item name="android:textColorPrimary">@color/textPrimary</item>
         <item name="android:textColorSecondary">@color/textSecondary</item>
+        <!-- Fix: Override primary color for dialog buttons to ensure visibility -->
+        <item name="colorPrimary">@color/colorAccent</item>
+    </style>
+
+    <!-- Custom Text Button Style for Dialogs -->
+    <style name="Widget.App.Button.TextButton" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textColor">@color/colorAccent</item>
     </style>
 
     <!-- Custom Card Style -->

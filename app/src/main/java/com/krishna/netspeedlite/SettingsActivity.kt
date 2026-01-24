@@ -21,6 +21,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.krishna.netspeedlite.databinding.ActivitySettingsBinding
 
 class SettingsActivity : AppCompatActivity() {
@@ -112,14 +114,11 @@ class SettingsActivity : AppCompatActivity() {
              val isAlert = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
              val intent = Intent(this, SpeedService::class.java)
              if (showSpeed || isAlert) {
-                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                     try {
-                         startForegroundService(intent)
-                     } catch (e: Exception) {
-                         e.printStackTrace()
-                     }
-                 } else {
-                     startService(intent)
+                 try {
+                     startForegroundService(intent)
+                 } catch (e: Exception) {
+                     // Ignore foreground service start errors
+
                  }
              } else {
                  stopService(intent)
@@ -127,28 +126,28 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         switchShowSpeed.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_SHOW_SPEED, isChecked).apply()
+            prefs.edit { putBoolean(Constants.PREF_SHOW_SPEED, isChecked) }
             checkServiceState()
         }
 
         switchShowUpDown.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_SHOW_UP_DOWN, isChecked).apply()
+            prefs.edit { putBoolean(Constants.PREF_SHOW_UP_DOWN, isChecked) }
         }
 
         switchShowWifiSignal.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, isChecked).apply()
+            prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, isChecked) }
         }
 
         switchDataAlert.setOnCheckedChangeListener { _, isChecked ->
             layoutDataLimitOptions.visibility = if (isChecked) View.VISIBLE else View.GONE
             
             // Reset all trigger flags and date to enable fresh testing
-            prefs.edit()
-                .putBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, isChecked)
-                .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                .putString(Constants.PREF_LAST_ALERT_DATE, "") // Reset date to allow re-triggering
-                .apply()
+            prefs.edit {
+                putBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, isChecked)
+                putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                putString(Constants.PREF_LAST_ALERT_DATE, "") // Reset date to allow re-triggering
+            }
             
             checkServiceState()
         }
@@ -164,9 +163,15 @@ class SettingsActivity : AppCompatActivity() {
             
             if (limitStr.isEmpty()) {
                 if (switchDataAlert.isChecked) {
-                    // Don't clear limit, just ignore empty input
+                    // Logic Fix: If alerts are ON but user clears text, treat it as "Invalid" or "Disable"?
+                    // Better UX: Don't allow empty if ON. Show error.
+                    tvLimitError.text = getString(R.string.data_limit_error)
+                    tvLimitError.visibility = View.VISIBLE
+                } else {
+                    // If alerts are OFF and empty, safe to clear the pref to 0
+                    prefs.edit { putFloat(Constants.PREF_DAILY_LIMIT_MB, 0f) }
+                    tvLimitError.visibility = View.GONE
                 }
-                tvLimitError.visibility = View.GONE
             } else {
                 try {
                     val limitVal = limitStr.toDouble()
@@ -181,16 +186,16 @@ class SettingsActivity : AppCompatActivity() {
                              tvLimitError.text = getString(R.string.data_limit_too_large)
                              tvLimitError.visibility = View.VISIBLE
                         } else {
-                             prefs.edit()
-                                .putFloat(Constants.PREF_DAILY_LIMIT_MB, limitInMB.toFloat())
-                                .putString(Constants.PREF_SELECTED_UNIT, selectedUnit)
+                             prefs.edit {
+                                putFloat(Constants.PREF_DAILY_LIMIT_MB, limitInMB.toFloat())
+                                putString(Constants.PREF_SELECTED_UNIT, selectedUnit)
                                 // Reset alerts when limit changes to allow re-triggering
-                                .putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                                .putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                                .putString(Constants.PREF_LAST_ALERT_DATE, "") // Reset for fresh testing
-                                .apply()
+                                putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                                putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                                putString(Constants.PREF_LAST_ALERT_DATE, "") // Reset for fresh testing
+                             }
                              tvLimitError.visibility = View.GONE
-                             android.util.Log.d("SettingsActivity", "Data limit saved: ${limitInMB}MB, Unit=$selectedUnit")
+
                         }
                     }
                 } catch (e: NumberFormatException) {
@@ -233,7 +238,7 @@ class SettingsActivity : AppCompatActivity() {
             }
 
             if (prefs.getInt(Constants.PREF_THEME_MODE, -100) != mode) {
-                prefs.edit().putInt(Constants.PREF_THEME_MODE, mode).apply()
+                prefs.edit { putInt(Constants.PREF_THEME_MODE, mode) }
                 // Post to avoid race condition during layout pass
                 group.post { AppCompatDelegate.setDefaultNightMode(mode) }
             }
@@ -254,11 +259,12 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         btnRateUs.setOnClickListener {
-             // Simple Intent to Play Store as fallback default, or use ReviewManager
              try {
-                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")))
+                 val intent = Intent(Intent.ACTION_VIEW, "market://details?id=$packageName".toUri())
+                 intent.setPackage("com.android.vending")
+                 startActivity(intent)
              } catch (e: ActivityNotFoundException) {
-                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
+                 startActivity(Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$packageName".toUri()))
              }
         }
 
@@ -284,16 +290,11 @@ class SettingsActivity : AppCompatActivity() {
 
         // Battery Optimization click handler
         layoutBatteryOpt.setOnClickListener {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                try {
-                    val intent = Intent().apply {
-                        action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(this, getString(R.string.battery_optimization_error), Toast.LENGTH_SHORT).show()
-                }
+            try {
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, getString(R.string.battery_optimization_error), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -301,6 +302,8 @@ class SettingsActivity : AppCompatActivity() {
     private fun updatePermissionStatuses() {
         val tvUsageStatus = binding.tvUsageAccessStatus
         val tvBatteryStatus = binding.tvBatteryOptStatus
+        val tvBatteryDesc = binding.tvBatteryOptDesc
+        val tvUsageDesc = binding.tvUsageAccessDesc
 
         // Usage Access status
         val hasUsageAccess = hasUsageStatsPermission()
@@ -308,17 +311,21 @@ class SettingsActivity : AppCompatActivity() {
         tvUsageStatus.setBackgroundResource(
             if (hasUsageAccess) R.drawable.bg_status_badge_success else R.drawable.bg_status_badge_error
         )
+        // Dynamic description text
+        tvUsageDesc.text = if (hasUsageAccess) getString(R.string.usage_access_desc) else getString(R.string.usage_access_desc_enable)
 
         // Battery Optimization status
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            val isIgnoringBatteryOpt = powerManager?.isIgnoringBatteryOptimizations(packageName) == true
-            
-            tvBatteryStatus.text = if (isIgnoringBatteryOpt) getString(R.string.status_unrestricted) else getString(R.string.status_optimized)
-            tvBatteryStatus.setBackgroundResource(
-                if (isIgnoringBatteryOpt) R.drawable.bg_status_badge_success else R.drawable.bg_status_badge_error
-            )
-        }
+        // Battery Optimization status
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isIgnoringBatteryOpt = powerManager?.isIgnoringBatteryOptimizations(packageName) == true
+        
+        tvBatteryStatus.text = if (isIgnoringBatteryOpt) getString(R.string.status_unrestricted) else getString(R.string.status_optimized)
+        tvBatteryStatus.setBackgroundResource(
+            if (isIgnoringBatteryOpt) R.drawable.bg_status_badge_success else R.drawable.bg_status_badge_error
+        )
+        
+        // Dynamic description text
+        tvBatteryDesc.text = if (isIgnoringBatteryOpt) getString(R.string.battery_opt_desc) else getString(R.string.battery_opt_desc_enable)
     }
     
     private fun hasUsageStatsPermission(): Boolean {
