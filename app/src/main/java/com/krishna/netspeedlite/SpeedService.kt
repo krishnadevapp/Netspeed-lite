@@ -143,6 +143,25 @@ class SpeedService : Service() {
         }
     }
 
+    // Listener for immediate response to settings changes
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            Constants.PREF_SHOW_UP_DOWN,
+            Constants.PREF_SHOW_WIFI_SIGNAL,
+            Constants.PREF_SHOW_SPEED -> {
+                // Immediately refresh notification when display settings change
+                serviceScope.launch {
+                    try {
+                        lastNotificationContent = "" // Clear cache to force update
+                        updateNotificationDataSuspend()
+                    } catch (e: Exception) {
+                        // Ignore errors
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
@@ -193,6 +212,9 @@ class SpeedService : Service() {
         } catch (e: Exception) {
             android.util.Log.e("SpeedService", "Error registering screen receiver", e)
         }
+
+        // Register SharedPreferences listener for immediate toggle response
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
 
         // Initialize tracker with current date to avoid immediate reset on start
         lastDayTracker = try {
@@ -806,6 +828,13 @@ class SpeedService : Service() {
             unregisterReceiver(screenStateReceiver)
         } catch (e: IllegalArgumentException) {
             // Receiver not registered
+        }
+
+        // Unregister SharedPreferences listener
+        try {
+            prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
+        } catch (e: Exception) {
+            // Ignore
         }
 
         // Restart service if it was killed system-side but user wants it on
