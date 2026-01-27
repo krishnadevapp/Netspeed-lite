@@ -25,6 +25,8 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.krishna.netspeedlite.databinding.ActivitySettingsBinding
 
+import androidx.activity.enableEdgeToEdge
+
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
@@ -32,6 +34,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
