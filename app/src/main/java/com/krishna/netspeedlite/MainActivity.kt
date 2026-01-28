@@ -377,8 +377,11 @@ class MainActivity : AppCompatActivity() {
                         val wifi = w
 
                         // Add to usage list only if it's part of the current month
+                        // Add all days to usage list (Show Last 30 Days)
+                        usageList.add(DailyUsage(startTime, mobile, wifi, mobile + wifi))
+
+                        // Only accumulate "This Month" if valid
                         if (isCurrentMonth) {
-                            usageList.add(DailyUsage(startTime, mobile, wifi, mobile + wifi))
                             totalMobileMonth += mobile
                             totalWifiMonth += wifi
                         }
