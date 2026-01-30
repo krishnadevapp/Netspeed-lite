@@ -41,6 +41,57 @@ object NetworkUsageHelper {
     }
 
     /**
+     * BUG FIX: Get today's mobile usage from midnight to NOW (not end of day).
+     * This prevents querying future time which causes inflated/deflated readings.
+     * Use this function for data alert checking.
+     */
+    fun getTodayMobileUsageUntilNow(context: Context): Long {
+        val statsManager = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+            ?: return 0L
+
+        val calendar = Calendar.getInstance()
+        // Start of today
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        val startTime = calendar.timeInMillis
+        
+        // End is NOW, not end of day
+        val endTime = System.currentTimeMillis()
+
+        @Suppress("DEPRECATION")
+        return getSafeUsage(statsManager, ConnectivityManager.TYPE_MOBILE, startTime, endTime)
+    }
+
+    /**
+     * BUG FIX: Get today's mobile AND WiFi usage from midnight to NOW.
+     * Use this for notification display baseline to avoid querying future time.
+     */
+    fun getTodayUsageUntilNow(context: Context): Pair<Long, Long> {
+        val statsManager = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+            ?: return Pair(0L, 0L)
+
+        val calendar = Calendar.getInstance()
+        // Start of today
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        val startTime = calendar.timeInMillis
+        
+        // End is NOW, not end of day
+        val endTime = System.currentTimeMillis()
+
+        @Suppress("DEPRECATION")
+        val mobile = getSafeUsage(statsManager, ConnectivityManager.TYPE_MOBILE, startTime, endTime)
+        @Suppress("DEPRECATION")
+        val wifi = getSafeUsage(statsManager, ConnectivityManager.TYPE_WIFI, startTime, endTime)
+
+        return Pair(mobile, wifi)
+    }
+
+    /**
      * Generic method to get usage for a specific time range.
      * Useful for custom ranges (e.g., in MainActivity).
      */

@@ -51,9 +51,6 @@ class SpeedService : Service() {
     private var lastMobileRx = 0L
     private var lastMobileTx = 0L
     private var tickCount = 0
-    
-    // Real-time accumulator for immediate alerts
-    private var approxMobileUsage = 0L
 
     private var lastNetworkStatsUpdate = 0L
     
@@ -268,43 +265,30 @@ class SpeedService : Service() {
             try {
                 val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
                 if (limitMb <= 0f) {
-                    // Log once every ~5 minutes
-                    if (tickCount % 300 == 0) {
-                        android.util.Log.w("SpeedService", "checkDataAlerts: Data limit not set (limitMb=$limitMb)")
-                    }
                     return@launch
                 }
 
                 val todayStr = try {
                     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 } catch (e: Exception) {
-                    android.util.Log.e("SpeedService", "Error formatting date", e)
                     ""
                 }
+                
+                if (todayStr.isEmpty()) {
+                    return@launch
+                }
+
                 val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
 
-                if (todayStr.isNotEmpty()) {
-                    // Check 1: Local Midnight Reset (Service running across boundary)
-                    if (todayStr != lastDayTracker) {
-                        approxMobileUsage = 0L
-                        // RESET PERSISTENCE ON NEW DAY
-                        prefs.edit { putLong(Constants.PREF_APPROX_DAILY_MOBILE, 0L) }
-                        lastDayTracker = todayStr
+                // UNIFIED DAY RESET: Single atomic check for new day
+                // Fixes race condition between lastDayTracker and lastChecked
+                if (todayStr != lastChecked || todayStr != lastDayTracker) {
+                    prefs.edit {
+                        putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
+                        putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                        putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
                     }
-                    
-                    // Check 2: SharedPrefs Reset (Sync with Main App or First Run)
-                    if (todayStr != lastChecked) {
-                        prefs.edit {
-                            putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
-                            putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                            putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                            // START OF NEW DAY -> CLEAR SAVED USAGE
-                            putLong(Constants.PREF_APPROX_DAILY_MOBILE, 0L)
-                        }
-                        // Ensure accumulator reset if we hit this path (redundant but safe)
-                        approxMobileUsage = 0L
-                        lastDayTracker = todayStr
-                    }
+                    lastDayTracker = todayStr
                 }
 
                 val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
@@ -317,75 +301,48 @@ class SpeedService : Service() {
 
                 val limitBytes = (limitMb.toDouble() * 1024.0 * 1024.0).toLong()
                 if (limitBytes <= 0) {
-                    android.util.Log.w("SpeedService", "checkDataAlerts: Invalid limitBytes=$limitBytes")
                     return@launch
                 }
 
-                // Get mobile data usage - works with or without Usage Stats permission
+                // BUG FIX: Use the corrected function that queries midnight to NOW
+                // instead of midnight to 23:59:59 (future time)
                 val hasPermission = hasUsageStatsPermission()
                 val mobileUsage = if (hasPermission) {
-                    // Use NetworkStats if permission is granted (more accurate)
-                    val (mobile, _) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
-                    mobile
+                    // FIXED: Use getTodayMobileUsageUntilNow() - queries correct time range
+                    NetworkUsageHelper.getTodayMobileUsageUntilNow(applicationContext)
                 } else {
-                    // Use manual tracking if permission is not granted
+                    // Fallback to manual tracking (less accurate but still works)
                     val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-                    val manualMobile = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
-                    
-                    // Log fallback mode once every ~5 minutes
-                    if (tickCount % 300 == 0) {
-                    }
-                    
-                    manualMobile
-                }
-                
-                // LOAD PERSISTED USAGE (High-water mark from prev run)
-                // This protects against service restarts wiping 'approxMobileUsage'
-                val savedApproxUsage = prefs.getLong(Constants.PREF_APPROX_DAILY_MOBILE, 0L)
-                
-                // Effective Usage is the MAX of:
-                // 1. Current System Stats (mobileUsage) - Might be lagging
-                // 2. In-Memory Tracker (approxMobileUsage) - Might be 0 if just restarted
-                // 3. Persisted High-Water Mark (savedApproxUsage) - Keeps memory across restarts
-                val effectiveUsage = maxOf(mobileUsage, approxMobileUsage, savedApproxUsage)
-                
-                // Update trackers if we found a new high-water mark
-                if (effectiveUsage > savedApproxUsage) {
-                     // We have new usage data!
-                     approxMobileUsage = effectiveUsage 
-                     // Persist it immediately so we don't lose it on crash/restart
-                     prefs.edit { putLong(Constants.PREF_APPROX_DAILY_MOBILE, effectiveUsage) }
-                } else if (effectiveUsage > approxMobileUsage) {
-                    // Just update local memory if saved was higher
-                    approxMobileUsage = effectiveUsage
+                    prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
                 }
 
+                // BUG FIX: Removed double-counting accumulator logic
+                // The system stats from NetworkStatsManager is the source of truth.
+                // approxMobileUsage was causing inflated readings because it accumulated
+                // bytes that were already counted by the system.
+                // 
+                // For real-time alerts during active downloads, we still check in
+                // updateNotificationDataSuspend() which triggers checkDataAlerts()
+                // when estimated percentage crosses thresholds.
+                
                 val percentage = if (limitBytes > 0) {
-                    (effectiveUsage.toDouble() / limitBytes.toDouble()) * 100
+                    (mobileUsage.toDouble() / limitBytes.toDouble()) * 100
                 } else {
                     0.0
                 }
-                
-                // Log usage status periodically (every ~60 seconds when screen on)
-                if (tickCount % 60 == 0) {
-                    val permStatus = if (hasPermission) "NetworkStats" else "Manual"
-
-                }
 
                 if (percentage >= 100 && !alert100) {
-
-                    // Removed Toast as per request
                     sendAlertNotification(
                         "Daily data limit reached!", 
-                        "You've used ${formatUsage(effectiveUsage)} of your ${formatUsage(limitBytes)} daily limit."
+                        "You've used ${formatUsage(mobileUsage)} of your ${formatUsage(limitBytes)} daily limit."
                     )
                     prefs.edit { putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true) }
                 } else if (percentage >= 80 && !alert80 && !alert100) {
-
-                     // Removed Toast as per request
+                    // BUG FIX: Show actual percentage instead of static "80%"
+                    val actualPercentage = percentage.toInt()
                     sendAlertNotification(
                         "Data usage warning", 
-                        "You've used ${formatUsage(effectiveUsage)} (80%) of your ${formatUsage(limitBytes)} daily limit."
+                        "You've used ${formatUsage(mobileUsage)} ($actualPercentage%) of your ${formatUsage(limitBytes)} daily limit."
                     )
                     prefs.edit { putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true) }
                 }
@@ -541,27 +498,8 @@ class SpeedService : Service() {
         
         val displayBytes = displayRx + displayTx
 
-        // Use strict mobile-specific bytes for accumulator (Data Alert Logic)
-        // (This remains unchanged as it was already correct)
-        if (isMobile && totalMobileBytes > 0) {
-            approxMobileUsage += totalMobileBytes
-            
-            
-            val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
-            if (limitMb > 0f) {
-                val limitBytes = (limitMb * 1024 * 1024).toLong()
-                
-                // If accumulated estimated usage crosses 80%, force a check immediately
-                val estPercentage = (approxMobileUsage.toDouble() / limitBytes.toDouble()) * 100
-                val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                
-                if ((estPercentage >= 80 && !alert80) || (estPercentage >= 100 && !alert100)) {
-                    // Force Check Now
-                    checkDataAlerts()
-                }
-            }
-        }
+        // NOTE: Real-time alert triggering moved AFTER the hybrid usage calculation below
+        // to use the interpolated baseline+session value instead of a separate accumulator
 
         val details = StringBuilder()
         
@@ -573,10 +511,24 @@ class SpeedService : Service() {
         val usageQueryInterval = 60_000L // 60 seconds
         val timeSinceLastQuery = System.currentTimeMillis() - lastUsageDbQueryTime
         
+        // BUG FIX #1: Reset session accumulators at midnight
+        // Check if day has changed to prevent stale accumulator data after midnight
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        if (todayStr != lastDayTracker) {
+            sessionMobileAccumulator = 0L
+            sessionWifiAccumulator = 0L
+            cachedMobileBaseline = 0L
+            cachedWifiBaseline = 0L
+            lastUsageDbQueryTime = 0L // Force refresh on next iteration
+            lastDayTracker = todayStr
+        }
+        
         if (timeSinceLastQuery > usageQueryInterval || lastUsageDbQueryTime == 0L) {
              // 1. REFRESH BASELINE (Heavy Operation)
              if (hasUsageStatsPermission()) {
-                 val (mobile, wifi) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
+                 // BUG FIX #3: Use getTodayUsageUntilNow() instead of getUsageForDate()
+                 // This queries from midnight to NOW, not midnight to 23:59:59 (future)
+                 val (mobile, wifi) = NetworkUsageHelper.getTodayUsageUntilNow(applicationContext)
                  cachedMobileBaseline = mobile
                  cachedWifiBaseline = wifi
                  lastUsageDbQueryTime = System.currentTimeMillis()
@@ -611,6 +563,24 @@ class SpeedService : Service() {
             }
             
             details.append(" | WiFi: ${formatUsage(displayWifi)}")
+            
+            // REAL-TIME ALERT CHECK using interpolated displayMobile
+            // This triggers alerts immediately when thresholds are crossed during active downloads
+            // Uses the same value displayed in notification for consistency (no double-counting)
+            val limitBytes = if (limitMb > 0f) (limitMb * 1024 * 1024).toLong() else 0L
+            if (limitBytes > 0) {
+                val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+                if (isAlertEnabled) {
+                    val estPercentage = (displayMobile.toDouble() / limitBytes.toDouble()) * 100
+                    val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                    val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                    
+                    if ((estPercentage >= 80 && !alert80) || (estPercentage >= 100 && !alert100)) {
+                        // Threshold crossed - force a check with the accurate system stats
+                        checkDataAlerts()
+                    }
+                }
+            }
         } else {
              // Fallback: Use manually tracked data
              val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
@@ -618,9 +588,10 @@ class SpeedService : Service() {
              val wifi = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
              details.append("Mobile: ${formatUsage(mobile)} | WiFi: ${formatUsage(wifi)}")
              
-             // Track current delta
-             if (totalBytes > 0) {
-                  trackManualUsage(rxDelta + txDelta, todayKey)
+             // BUG FIX #2: Track using VPN-corrected displayBytes instead of raw deltas
+             // The raw rxDelta+txDelta includes VPN double-counting, displayBytes is corrected
+             if (displayBytes > 0) {
+                  trackManualUsage(displayBytes, todayKey)
              }
         }
 
