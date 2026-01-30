@@ -13,6 +13,8 @@ object Constants {
     const val PREF_THEME_MODE = "theme_mode"
     const val PREF_SHOW_SPEED = "show_speed"
     const val PREF_SELECTED_UNIT = "selected_unit"
+    const val PREF_USER_LIMIT_INPUT = "user_limit_input"
+    const val PREF_APPROX_DAILY_MOBILE = "approx_daily_mobile"
 
     const val PREF_UNIT_IN_MB = "unit_in_mb"
     const val PREF_APP_OPEN_COUNT = "app_open_count"
@@ -31,7 +33,7 @@ object Constants {
     const val ALERT_CHECK_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
 
     // Icon Cache
-    const val MAX_ICON_CACHE_SIZE = 15
+    const val MAX_ICON_CACHE_SIZE = 50
     
     // Manual Tracking Keys (Prefix + yyyyMMdd)
     const val PREF_MANUAL_MOBILE_PREFIX = "manual_mobile_"

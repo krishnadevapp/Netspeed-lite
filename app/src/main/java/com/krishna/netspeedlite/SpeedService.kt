@@ -59,9 +59,28 @@ class SpeedService : Service() {
     
     // Fix Race Condition: Track day locally to ensure reset even if MainActivity updates Prefs first
     private var lastDayTracker: String = ""
+    
+    // Fix Jitter: Track exact time of last update for precise speed calculation
+    private var lastUpdateTimestamp: Long = 0L
+
+    // Fix Battery Drain: Hybrid Usage Interpolation
+    // We only query the heavy system DB once every 60s (Baseline).
+    // In between, we add the live 'delta' bytes to the baseline for smooth 1s updates.
+    private var lastUsageDbQueryTime: Long = 0L
+    private var cachedMobileBaseline: Long = 0L
+    private var cachedWifiBaseline: Long = 0L
+    // Accumulators reset every time we refresh the baseline
+    private var sessionMobileAccumulator: Long = 0L
+    private var sessionWifiAccumulator: Long = 0L
 
     // Optimization: Cache last notification content to avoid redundant updates
     private var lastNotificationContent: String = ""
+
+    // ... (Rest of variables) ...
+
+    // ... (Inside updateNotificationDataSuspend) ...
+        
+
 
     private val channelId = Constants.SPEED_CHANNEL_ID
     private val alertChannelId = Constants.ALERT_CHANNEL_ID
@@ -267,18 +286,20 @@ class SpeedService : Service() {
                 if (todayStr.isNotEmpty()) {
                     // Check 1: Local Midnight Reset (Service running across boundary)
                     if (todayStr != lastDayTracker) {
-
                         approxMobileUsage = 0L
+                        // RESET PERSISTENCE ON NEW DAY
+                        prefs.edit { putLong(Constants.PREF_APPROX_DAILY_MOBILE, 0L) }
                         lastDayTracker = todayStr
                     }
                     
                     // Check 2: SharedPrefs Reset (Sync with Main App or First Run)
                     if (todayStr != lastChecked) {
-
                         prefs.edit {
                             putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
                             putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
                             putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                            // START OF NEW DAY -> CLEAR SAVED USAGE
+                            putLong(Constants.PREF_APPROX_DAILY_MOBILE, 0L)
                         }
                         // Ensure accumulator reset if we hit this path (redundant but safe)
                         approxMobileUsage = 0L
@@ -294,7 +315,7 @@ class SpeedService : Service() {
                     return@launch
                 }
 
-                val limitBytes = (limitMb * 1024 * 1024).toLong()
+                val limitBytes = (limitMb.toDouble() * 1024.0 * 1024.0).toLong()
                 if (limitBytes <= 0) {
                     android.util.Log.w("SpeedService", "checkDataAlerts: Invalid limitBytes=$limitBytes")
                     return@launch
@@ -318,13 +339,25 @@ class SpeedService : Service() {
                     manualMobile
                 }
                 
-                // Use the higher of tracked usage or our real-time estimate
-                // This ensures we catch alerts even if tracking lags behind
-                val effectiveUsage = maxOf(mobileUsage, approxMobileUsage)
+                // LOAD PERSISTED USAGE (High-water mark from prev run)
+                // This protects against service restarts wiping 'approxMobileUsage'
+                val savedApproxUsage = prefs.getLong(Constants.PREF_APPROX_DAILY_MOBILE, 0L)
                 
-                // Update approxMobileUsage to track from baseline
-                if (mobileUsage > approxMobileUsage) {
-                    approxMobileUsage = mobileUsage
+                // Effective Usage is the MAX of:
+                // 1. Current System Stats (mobileUsage) - Might be lagging
+                // 2. In-Memory Tracker (approxMobileUsage) - Might be 0 if just restarted
+                // 3. Persisted High-Water Mark (savedApproxUsage) - Keeps memory across restarts
+                val effectiveUsage = maxOf(mobileUsage, approxMobileUsage, savedApproxUsage)
+                
+                // Update trackers if we found a new high-water mark
+                if (effectiveUsage > savedApproxUsage) {
+                     // We have new usage data!
+                     approxMobileUsage = effectiveUsage 
+                     // Persist it immediately so we don't lose it on crash/restart
+                     prefs.edit { putLong(Constants.PREF_APPROX_DAILY_MOBILE, effectiveUsage) }
+                } else if (effectiveUsage > approxMobileUsage) {
+                    // Just update local memory if saved was higher
+                    approxMobileUsage = effectiveUsage
                 }
 
                 val percentage = if (limitBytes > 0) {
@@ -467,13 +500,49 @@ class SpeedService : Service() {
         if (mobileRx != -1L) lastMobileRx = mobileRx
         if (mobileTx != -1L) lastMobileTx = mobileTx
 
-        // Check if we are on mobile data
+        // Check Active Network Type
         val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val isMobile = cm?.activeNetwork?.let { net ->
-             cm.getNetworkCapabilities(net)?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-        } ?: false
+        val activeNetwork = cm?.activeNetwork
+        val caps = cm?.getNetworkCapabilities(activeNetwork)
+        
+        val isMobile = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+        val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        val isVpn = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
 
-        // Use strict mobile-specific bytes for accumulator
+        // --- VPN DOUBLE VISON FIX ---
+        // 1. Mobile Data: TrafficStats.getMobileRx/TxBytes IS the physical interface. 
+        //    It naturally excludes the VPN 'tun' interface overhead. 
+        //    So simply using 'mobileRxDelta' instead of 'totalBytes' fixes Mobile+VPN.
+        
+        // 2. Wifi: We only have 'Total'. Total = Wifi + VPN(Tun).
+        //    If VPN is on, traffic looks doubled. We assume Full Tunnel and divide by 2.
+        
+        val displayRx: Long
+        val displayTx: Long
+        
+        if (isMobile) {
+            // Precise Mobile Speed (ignores VPN overhead)
+            displayRx = mobileRxDelta
+            displayTx = mobileTxDelta
+        } else {
+            // Wifi / Ethernet
+            // Calculate Non-Mobile Traffic
+            var wifiRx = if (rxDelta > mobileRxDelta) rxDelta - mobileRxDelta else 0L
+            var wifiTx = if (txDelta > mobileTxDelta) txDelta - mobileTxDelta else 0L
+            
+            if (isVpn) {
+                // Heuristic: Remove double counting (Physical + Tun) -> Divide by 2
+                wifiRx /= 2
+                wifiTx /= 2
+            }
+            displayRx = wifiRx
+            displayTx = wifiTx
+        }
+        
+        val displayBytes = displayRx + displayTx
+
+        // Use strict mobile-specific bytes for accumulator (Data Alert Logic)
+        // (This remains unchanged as it was already correct)
         if (isMobile && totalMobileBytes > 0) {
             approxMobileUsage += totalMobileBytes
             
@@ -495,19 +564,53 @@ class SpeedService : Service() {
         }
 
         val details = StringBuilder()
-        // NetworkUsageHelper call moved to IO dispatcher
+        
+        // --- HYBRID USAGE LOGIC (BATTERY OPTIMIZATION) ---
+        // Requirement: Update text every second.
+        // Constraint: NetworkUsageHelper queries are heavy (IPC + Disk).
+        // Solution: Query DB every 60s. Interpolate in between.
+        
+        val usageQueryInterval = 60_000L // 60 seconds
+        val timeSinceLastQuery = System.currentTimeMillis() - lastUsageDbQueryTime
+        
+        if (timeSinceLastQuery > usageQueryInterval || lastUsageDbQueryTime == 0L) {
+             // 1. REFRESH BASELINE (Heavy Operation)
+             if (hasUsageStatsPermission()) {
+                 val (mobile, wifi) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
+                 cachedMobileBaseline = mobile
+                 cachedWifiBaseline = wifi
+                 lastUsageDbQueryTime = System.currentTimeMillis()
+                 
+                 // Reset accumulators as they are now effectively baked into the new baseline
+                 sessionMobileAccumulator = 0L
+                 sessionWifiAccumulator = 0L
+             }
+        } else {
+             // 2. INTERPOLATE (Light Operation)
+             // Add this second's usage to the running session accumulator
+             if (isMobile) {
+                // totalMobileBytes already handles VPN correction (physical interface check)
+                sessionMobileAccumulator += totalMobileBytes
+             } else if (isWifi) {
+                 // displayRx/Tx already handles VPN correction (heuristic)
+                 sessionWifiAccumulator += (displayRx + displayTx)
+             }
+        }
+        
+        // 3. DISPLAY (Baseline + Accumulator)
         if (hasUsageStatsPermission()) {
-            val (mobile, wifi) = NetworkUsageHelper.getUsageForDate(applicationContext, System.currentTimeMillis())
-            details.append("Mobile: ${formatUsage(mobile)}")
+            val displayMobile = cachedMobileBaseline + sessionMobileAccumulator
+            val displayWifi = cachedWifiBaseline + sessionWifiAccumulator
             
-            // Show percentage if limit is set (Helpful for debugging alerts)
+            details.append("Mobile: ${formatUsage(displayMobile)}")
+            
             // Show percentage if limit is set
             val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
             if (limitMb > 0f) {
                  // Percentage display removed as per request
             }
             
-            details.append(" | WiFi: ${formatUsage(wifi)}")
+            details.append(" | WiFi: ${formatUsage(displayWifi)}")
         } else {
              // Fallback: Use manually tracked data
              val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
@@ -523,12 +626,34 @@ class SpeedService : Service() {
 
         val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
         
+        // --- PRECISION TIMING FIX ---
+        val currentTime = System.currentTimeMillis()
+        val timeDelta = if (lastUpdateTimestamp == 0L) {
+            1000L // Default for first run
+        } else {
+            currentTime - lastUpdateTimestamp
+        }
+        lastUpdateTimestamp = currentTime
+        
+        // Prevent Divide-By-Zero or extreme glitches
+        val safeTimeDelta = if (timeDelta < 100) 1000L else timeDelta
+        
+        // Calculate Speed using Actual Time: (Bytes * 1000) / TimeMs
+        // This fixes the "Jitter" bug where 1.2s delay caused 20% speed over-reporting
+        val calculatedSpeedBytes = (displayBytes * 1000) / safeTimeDelta
+        
         // Optimization: Generate a content key to check if update is needed
-        val (speedVal, unitVal) = formatSpeed(totalBytes)
+        val (speedVal, unitVal) = formatSpeed(calculatedSpeedBytes)
         val contentKey = if (showSpeed) {
-            val simpleRx = formatSimple(rxDelta)
-            val simpleTx = formatSimple(txDelta)
-            val wifiSignal = if (prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)) getWifiSignal().toString() else ""
+            // Simple RX/TX also needs to be normalized to "per second"
+            val simpleRx = formatSimple((displayRx * 1000) / safeTimeDelta)
+            val simpleTx = formatSimple((displayTx * 1000) / safeTimeDelta)
+            val wifiSigVal = getWifiSignal()
+            val wifiSignal = if (prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false) && wifiSigVal >= 0) {
+                 wifiSigVal.toString() 
+            } else {
+                 ""
+            }
             "$speedVal|$unitVal|$simpleRx|$simpleTx|$wifiSignal|$details"
         } else {
             "HIDDEN|$details"
@@ -543,10 +668,15 @@ class SpeedService : Service() {
         val notification = if (showSpeed) {
             var speedTitle = "$speedVal $unitVal"
             if (prefs.getBoolean(Constants.PREF_SHOW_UP_DOWN, false)) {
-                speedTitle += "   ↓ ${formatSimple(rxDelta)}   ↑ ${formatSimple(txDelta)}"
+                 val normRx = (displayRx * 1000) / safeTimeDelta
+                 val normTx = (displayTx * 1000) / safeTimeDelta
+                 speedTitle += "   ↓ ${formatSimple(normRx)}   ↑ ${formatSimple(normTx)}"
             }
             if (prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)) {
-                speedTitle += "   WiFi: ${getWifiSignal()}%"
+                val signal = getWifiSignal()
+                if (signal >= 0) {
+                    speedTitle += "   WiFi: $signal%"
+                }
             }
             buildNotification(speedTitle, speedVal, unitVal, details.toString())
         } else {
@@ -600,9 +730,26 @@ class SpeedService : Service() {
             val maxRssi = -55
             var rssi = -127
 
-            // Method 1: ConnectivityManager (Android 10+ / API 29+)
-            // Preferable as it doesn't strictly require Location Permission for RSSI on some versions
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // CRITICAL FIX FOR ANDROID 14:
+            // "NetworkCapabilities" Signal Strength is cached/stale and often returns -127 if not updated.
+            // "WifiManager.getConnectionInfo()" triggers a fresh(er) lookup but requires ACCESS_FINE_LOCATION on Android 10+.
+            
+            // We now have ACCESS_FINE_LOCATION in manifest, so we prefer WifiManager.
+            
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wm != null) {
+                // Suppress deprecation: Standard way to get RSSI is still this or ScanResults (which are slower).
+                // Android recommended usage for foreground apps is still fine, especially for Signal Strength.
+                @Suppress("DEPRECATION")
+                val connectionInfo = wm.connectionInfo
+                if (connectionInfo != null) {
+                    // This will return -127 if permission is missing, but with permission it works.
+                    rssi = connectionInfo.rssi
+                }
+            }
+
+            // Fallback: ConnectivityManager (Less reliable for real-time RSSI, often returns intervals)
+            if (rssi == -127 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
                 if (cm != null) {
                     val activeNetwork = cm.activeNetwork
@@ -616,20 +763,8 @@ class SpeedService : Service() {
                 }
             }
 
-            // Method 2: WifiManager Fallback (Older Android or if Method 1 fails)
-            if (rssi == -127) {
-                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-                if (wm != null) {
-                    @Suppress("DEPRECATION")
-                    val connectionInfo = wm.connectionInfo
-                    if (connectionInfo != null) {
-                        rssi = connectionInfo.rssi
-                    }
-                }
-            }
-
-            // If still invalid, return 0
-            if (rssi == -127) return 0
+            // If still invalid, return -1 (Hidden) instead of 0 (Confusion)
+            if (rssi == -127) return -1
 
             return when {
                 rssi <= minRssi -> 0
@@ -637,7 +772,8 @@ class SpeedService : Service() {
                 else -> ((rssi - minRssi) * 100) / (maxRssi - minRssi)
             }
         } catch (e: Exception) {
-            return 0
+            // Permission might be denied at runtime security exception
+            return -1
         }
     }
 

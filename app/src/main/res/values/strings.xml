@@ -58,6 +58,10 @@
     <string name="cancel">Cancel</string>
 
     <!-- Permission Messages -->
+    <!-- Note: Generic permission strings (grant, deny, etc.) are in strings_permissions.xml -->
+    <string name="location_permission_title">Wifi Signal Permission</string>
+    <string name="location_permission_message">To display accurate Wifi signal strength, Android requires Location permission. This app does NOT track your physical location.</string>
+    <string name="location_permission_denied">Location permission is required for Wifi Signal</string>
 
 
 

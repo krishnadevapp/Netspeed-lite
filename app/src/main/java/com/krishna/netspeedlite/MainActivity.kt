@@ -450,11 +450,13 @@ class MainActivity : AppCompatActivity() {
     // Fix race condition: Only check alerts in MainActivity when app is in foreground
     // SpeedService handles background alerts, so we skip here to avoid duplicates
     private fun checkDataAlerts() {
+        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+        if (!isAlertEnabled) return // FIX: Never check if explicitly disabled
+
         // Skip alert checking in MainActivity - SpeedService handles it to avoid race conditions
         // This prevents duplicate notifications when both MainActivity and SpeedService check simultaneously
         // MainActivity will only show alerts if SpeedService is not running
         val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
-        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
         
         // If SpeedService is running (either speed or alerts enabled), let it handle alerts
         if (showSpeed || isAlertEnabled) {
@@ -462,10 +464,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         // This code only runs if SpeedService is NOT running (both showSpeed and isAlertEnabled are false)
-        // In this case, there's no alert to check anyway, so we return early
-        // Note: This is dead code since isAlertEnabled is already false from the check above
-        // Keeping the logic below for potential future use when service is off but alerts are on
-
+        // Since we explicitly check !isAlertEnabled above, this block is now effectively dead code
+        // safely preventing the Zombie bug.
+        
         val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
         if (limitMb <= 0f) return
 

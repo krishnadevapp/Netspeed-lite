@@ -17,6 +17,7 @@ class BootReceiver : BroadcastReceiver() {
         if ((showSpeed || isAlertEnabled) && (intent.action == Intent.ACTION_BOOT_COMPLETED ||
                     intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
                     intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
+                    intent.action == Intent.ACTION_MY_PACKAGE_REPLACED ||
                     intent.action == "com.krishna.netspeedlite.RESTART_SERVICE")) {
 
             val serviceIntent = Intent(context, SpeedService::class.java)

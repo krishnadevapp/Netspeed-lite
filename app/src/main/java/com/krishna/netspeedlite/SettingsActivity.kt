@@ -66,6 +66,26 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updatePermissionStatuses()
+        syncWifiSwitchState()
+    }
+
+    private fun syncWifiSwitchState() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val isEnabled = prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)
+            val hasPermission = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            
+            if (isEnabled && !hasPermission) {
+                // Permission revoked (e.g. "Only this time" expired, or revoked in settings)
+                // We must turn off the feature to reflect reality
+                prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false) }
+                binding.switchShowWifiSignal.isChecked = false
+            } else if (isEnabled && hasPermission) {
+                // Ensure UI is checked if everything is fine (handling edge case of UI desync)
+                if (!binding.switchShowWifiSignal.isChecked) {
+                    binding.switchShowWifiSignal.isChecked = true
+                }
+            }
+        }
     }
 
     private fun setupUI() {
@@ -93,10 +113,16 @@ class SettingsActivity : AppCompatActivity() {
         layoutDataLimitOptions.visibility = if (isAlertEnabled) View.VISIBLE else View.GONE
 
         val savedUnit = prefs.getString(Constants.PREF_SELECTED_UNIT, "MB") ?: "MB"
+        // Try to get original user input string first (Preferred for display accuracy)
+        val savedInputString = prefs.getString(Constants.PREF_USER_LIMIT_INPUT, "")
         val savedLimitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
         
         // Convert to display value
-        if (savedLimitMb > 0) {
+        if (!savedInputString.isNullOrEmpty()) {
+             // Exact restoration of what user typed
+             etDataLimit.setText(savedInputString)
+        } else if (savedLimitMb > 0) {
+            // Fallback for legacy values
             val displayValue = if (savedUnit == "GB") savedLimitMb / 1024.0 else savedLimitMb.toDouble()
             val limitText = if (displayValue % 1.0 == 0.0) displayValue.toLong().toString() else displayValue.toString()
             etDataLimit.setText(limitText)
@@ -140,9 +166,66 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit { putBoolean(Constants.PREF_SHOW_UP_DOWN, isChecked) }
         }
 
+        // Initialize Permission Launcher for Location (Required for Wifi RSSI)
+        val requestLocationPermissionLauncher = registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+        ) { isGranted: Boolean ->
+            if (isGranted) {
+                // Permission granted, keep switch enabled
+                prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, true) }
+            } else {
+                // Permission denied, revert switch
+                binding.switchShowWifiSignal.isChecked = false
+                prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false) }
+                
+                if (!shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)) {
+                     // Permanently denied (or first time denied without "Don't ask again" checked on older Android)
+                     // Show Dialog to guide user to Settings
+                     com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                         .setTitle(R.string.permission_required)
+                         .setMessage(R.string.permission_settings_message)
+                         .setPositiveButton(R.string.go_to_settings) { _, _ ->
+                             try {
+                                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                     data = Uri.fromParts("package", packageName, null)
+                                 }
+                                 startActivity(intent)
+                             } catch (e: Exception) {
+                                 Toast.makeText(this, getString(R.string.location_permission_denied), Toast.LENGTH_LONG).show()
+                             }
+                         }
+                         .setNegativeButton(R.string.cancel, null)
+                         .show()
+                }
+            }
+            // Always sync state after permission result
+            syncWifiSwitchState()
+        }
+
         switchShowWifiSignal.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                // No permission needed anymore
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { // Android 10+ requires Location for RSSI
+                    if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                         // PRE-EMPTIVE EXPLANATION DIALOG
+                         // Explain WHY we need it before asking system permission
+                         com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                             .setTitle(R.string.location_permission_title)
+                             .setMessage(R.string.location_permission_message)
+                             .setPositiveButton(R.string.grant) { _, _ ->
+                                 requestLocationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                             }
+                             .setNegativeButton(R.string.deny) { _, _ ->
+                                 // Revert switch if they say NO to our dialog
+                                 binding.switchShowWifiSignal.isChecked = false
+                                 prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false) }
+                             }
+                             .setCancelable(false)
+                             .show()
+
+                         // Don't save yet, wait for result
+                         return@setOnCheckedChangeListener
+                    }
+                }
             }
             prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, isChecked) }
         }
@@ -178,7 +261,10 @@ class SettingsActivity : AppCompatActivity() {
                     tvLimitError.visibility = View.VISIBLE
                 } else {
                     // If alerts are OFF and empty, safe to clear the pref to 0
-                    prefs.edit { putFloat(Constants.PREF_DAILY_LIMIT_MB, 0f) }
+                    prefs.edit { 
+                        putFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
+                        putString(Constants.PREF_USER_LIMIT_INPUT, "")
+                    }
                     tvLimitError.visibility = View.GONE
                 }
             } else {
@@ -189,7 +275,8 @@ class SettingsActivity : AppCompatActivity() {
                          if (switchDataAlert.isChecked) tvLimitError.visibility = View.VISIBLE
                     } else {
                         val maxLimitMb = 10_000_000f // 10TB
-                        val limitInMB = if (selectedUnit == "GB") limitVal * 1024 else limitVal
+                        // FIX: Use Double for intermediate calculation
+                        val limitInMB = if (selectedUnit == "GB") limitVal * 1024.0 else limitVal
                         
                         if (limitInMB > maxLimitMb) {
                              tvLimitError.text = getString(R.string.data_limit_too_large)
@@ -198,6 +285,9 @@ class SettingsActivity : AppCompatActivity() {
                              prefs.edit {
                                 putFloat(Constants.PREF_DAILY_LIMIT_MB, limitInMB.toFloat())
                                 putString(Constants.PREF_SELECTED_UNIT, selectedUnit)
+                                // NEW: Save original input string
+                                putString(Constants.PREF_USER_LIMIT_INPUT, limitStr)
+                                
                                 // Reset alerts when limit changes to allow re-triggering
                                 putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
                                 putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
