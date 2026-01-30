@@ -167,10 +167,14 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // Initialize Permission Launcher for Location (Required for Wifi RSSI)
+        // Android 12+ requires requesting BOTH Fine and Coarse permissions
         val requestLocationPermissionLauncher = registerForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-        ) { isGranted: Boolean ->
-            if (isGranted) {
+            androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+            val hasFine = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
+            // We only care about Fine location for RSSI, but we must request both
+            
+            if (hasFine) {
                 // Permission granted, keep switch enabled
                 prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, true) }
             } else {
@@ -212,8 +216,13 @@ class SettingsActivity : AppCompatActivity() {
                              .setTitle(R.string.location_permission_title)
                              .setMessage(R.string.location_permission_message)
                              .setPositiveButton(R.string.grant) { _, _ ->
-                                 requestLocationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                             }
+                                 requestLocationPermissionLauncher.launch(
+                                     arrayOf(
+                                         android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                         android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                     )
+                                 )
+                            }
                              .setNegativeButton(R.string.deny) { _, _ ->
                                  // Revert switch if they say NO to our dialog
                                  binding.switchShowWifiSignal.isChecked = false

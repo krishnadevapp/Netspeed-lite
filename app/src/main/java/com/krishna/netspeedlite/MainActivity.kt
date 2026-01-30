@@ -186,6 +186,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
+        // Sync Wifi Permission State (Handle "Allow only this time" expiration)
+        syncWifiPermissionState()
+
         // Start auto-refresh
         refreshHandler.post(refreshRunnable)
 
@@ -194,8 +197,19 @@ class MainActivity : AppCompatActivity() {
             checkAlertsHandler.removeCallbacks(checkAlertsRunnable)
             checkAlertsHandler.post(checkAlertsRunnable)
         }
+    }
 
-
+    private fun syncWifiPermissionState() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val isEnabled = prefs.getBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false)
+            val hasPermission = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            
+            if (isEnabled && !hasPermission) {
+                // Permission revoked (e.g. "Only this time" expired)
+                // Silently disable the feature to prevent SpeedService exception loop
+                prefs.edit { putBoolean(Constants.PREF_SHOW_WIFI_SIGNAL, false) }
+            }
+        }
     }
 
 

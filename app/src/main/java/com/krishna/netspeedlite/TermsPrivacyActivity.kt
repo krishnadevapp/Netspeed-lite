@@ -67,6 +67,7 @@ class TermsPrivacyActivity : AppCompatActivity() {
                 <li><strong>INTERNET:</strong> Required for the speed meter to measure your active network throughput.</li>
                 <li><strong>ACCESS_NETWORK_STATE:</strong> Required to detect whether you are connected to mobile data or Wi-Fi.</li>
                 <li><strong>ACCESS_WIFI_STATE:</strong> Required to read your Wi-Fi signal strength for the optional Wi-Fi indicator feature.</li>
+                <li><strong>ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION:</strong> Required by the Android system to read Wi-Fi signal strength (RSSI). We use this <strong>strictly</strong> for signal strength and do <strong>not</strong> collect or track your physical location/GPS coordinates.</li>
                 <li><strong>FOREGROUND_SERVICE / FOREGROUND_SERVICE_SPECIAL_USE:</strong> Required to keep the speed meter running persistently in the status bar notification.</li>
                 <li><strong>PACKAGE_USAGE_STATS (Usage Access):</strong> Required to display historical data usage (Today, Last 7 Days, This Month).</li>
                 <li><strong>POST_NOTIFICATIONS:</strong> Required to show the live speed indicator notification.</li>

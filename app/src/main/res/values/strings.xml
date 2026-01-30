@@ -103,9 +103,9 @@
     <string name="usage_access_title">Usage Access</string>
     <string name="usage_access_desc">Required for accurate data usage statistics</string>
     <string name="usage_access_desc_enable">Enable for accurate data usage statistics</string>
-    <string name="battery_opt_title">Background Activity</string>
-    <string name="battery_opt_desc">Needed for accurate monitoring</string>
-    <string name="battery_opt_desc_enable">Enable for accurate monitoring</string>
+    <string name="battery_opt_title">Battery Optimization</string>
+    <string name="battery_opt_desc">App is protected from being killed in the background.</string>
+    <string name="battery_opt_desc_enable">Some devices kill background apps. Set to \'Unrestricted\' to prevent this.</string>
     <string name="status_granted">Granted</string>
     <string name="status_not_granted">Not Granted</string>
     <string name="status_optimized">Optimized</string>
