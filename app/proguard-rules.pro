@@ -46,11 +46,18 @@
 -dontwarn java.nio.file.**
 -dontnote okhttp3.**
 
+# 12. Keep Kotlin Coroutines (CRITICAL for live speed updates)
+# R8 can strip coroutine metadata, causing suspend functions to fail silently
+-keepclassmembers class kotlinx.coroutines.** { *; }
+-keepclassmembers class kotlin.coroutines.** { *; }
+-keep class kotlinx.coroutines.CoroutineExceptionHandler { *; }
+-dontwarn kotlinx.coroutines.**
+
 # ==============================================================================
 # PRODUCTION OPTIMIZATION - Reduces False Positive Virus Detections
 # ==============================================================================
 
-# 12. Strip ALL Log calls from release builds (important for security scanners)
+# 13. Strip ALL Log calls from release builds (important for security scanners)
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);

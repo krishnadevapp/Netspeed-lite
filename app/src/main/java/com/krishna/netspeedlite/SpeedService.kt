@@ -153,6 +153,34 @@ class SpeedService : Service() {
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     isScreenOn = true
+                    
+                    // BUG FIX: Force baseline refresh on screen wake-up
+                    // This prevents stale "4GB" data from showing after overnight sleep
+                    lastUsageDbQueryTime = 0L // Force immediate DB query
+                    
+                    // BUG FIX: Reset accumulators to prevent stale data accumulation
+                    // Usage tracked while screen was off may be inaccurate
+                    sessionMobileAccumulator = 0L
+                    sessionWifiAccumulator = 0L
+                    
+                    // BUG FIX: Reset TrafficStats baselines to prevent speed spikes
+                    // After long sleep, lastRx/lastTx are very old - resync to current values
+                    val currentRx = TrafficStats.getTotalRxBytes()
+                    val currentTx = TrafficStats.getTotalTxBytes()
+                    lastRx = if (currentRx == -1L) lastRx else currentRx
+                    lastTx = if (currentTx == -1L) lastTx else currentTx
+                    
+                    val currentMobileRx = TrafficStats.getMobileRxBytes()
+                    val currentMobileTx = TrafficStats.getMobileTxBytes()
+                    lastMobileRx = if (currentMobileRx == -1L) lastMobileRx else currentMobileRx
+                    lastMobileTx = if (currentMobileTx == -1L) lastMobileTx else currentMobileTx
+                    
+                    // Reset timestamp for accurate speed calculation
+                    lastUpdateTimestamp = System.currentTimeMillis()
+                    
+                    // Clear notification cache to force immediate update
+                    lastNotificationContent = ""
+                    
                     startUpdates() // Kickstart immediately to refresh UI
                 }
             }

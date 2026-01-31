@@ -17,10 +17,10 @@ android {
         targetSdk = 35
 
         // ⭐ UPDATED: Version Code must be higher for Play Store update
-        versionCode = 24
+        versionCode = 25
 
         // ⭐ UPDATED: Version Name to reflect new release
-        versionName = "1.0.1"
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
