@@ -129,9 +129,16 @@ class SpeedService : Service() {
             // This might be too slow for high speed downloads.
             // Let's ensure we check frequently enough.
             if (isScreenOn) {
-                 // Check alerts every tick (1s) for immediate feedback
-                 checkDataAlerts()
+                 // Optimization: Removed redundant checkDataAlerts() every second.
+                 // We rely on the "Smart Trigger" in updateNotificationDataSuspend() to check
+                 // when usage thresholds are crossed.
+                 
+                 // Fallback Safety Net: Force a check every 5 minutes (300 ticks) just in case
                  tickCount++
+                 if (tickCount % 300 == 0) {
+                     checkDataAlerts()
+                 }
+                 
                  if (tickCount > 1_000_000) tickCount = 0 // Prevent overflow
                  handler.postDelayed(this, Constants.UPDATE_INTERVAL_MS)
             } else {
@@ -210,6 +217,10 @@ class SpeedService : Service() {
         super.onCreate()
         prefs = getSharedPreferences(Constants.PREFS_NAME, MODE_PRIVATE)
 
+        // Fix: Correctly initialize screen state to avoid unnecessary work if started in background
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        isScreenOn = powerManager?.isInteractive ?: true
+
         createNotificationChannel()
         createAlertChannel()
 
@@ -236,14 +247,19 @@ class SpeedService : Service() {
             }
         } catch (e: Exception) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && e is android.app.ForegroundServiceStartNotAllowedException) {
-                android.util.Log.e("SpeedService", "Foreground service start not allowed", e)
-                stopSelf()
+                android.util.Log.e("SpeedService", "BG launch restricted, scheduling Worker fallback", e)
+                // BUG FIX: Do NOT call stopSelf(). Instead, schedule a Worker to retry shortly.
+                // The Worker has privileges to start the service even from background.
+                val workRequest = androidx.work.OneTimeWorkRequestBuilder<SpeedServiceWorker>()
+                    .setInitialDelay(5, java.util.concurrent.TimeUnit.SECONDS) // Short delay to let system settle
+                    .build()
+                androidx.work.WorkManager.getInstance(applicationContext).enqueue(workRequest)
             } else {
-                // Log other exceptions but don't crash if possible, or rethrow
+                // Log other exceptions but don't crash if possible
                 android.util.Log.e("SpeedService", "Error starting foreground service", e)
-                stopSelf() // Safer to stop service than crash
+                // For other critial errors, we might still have to stop, but let's try to stay alive if it's just a notification error
+                // stopSelf() // Removed to attempt persistence
             }
-            return // Prevent further initialization if functionality failed
         }
 
         // Register Screen On/Off receiver

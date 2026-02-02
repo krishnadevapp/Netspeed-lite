@@ -140,6 +140,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkServiceState() {
+        val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
+        val isAlert = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+        if (showSpeed || isAlert) {
+             startSpeedService()
+        }
+    }
+
     private fun startSpeedService() {
         val intent = Intent(this, SpeedService::class.java)
         try {
@@ -183,6 +191,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
     override fun onResume() {
         super.onResume()
 
@@ -192,12 +201,16 @@ class MainActivity : AppCompatActivity() {
         // Start auto-refresh
         refreshHandler.post(refreshRunnable)
 
+        // Ensure service is running when app is open (fixes issues if service was killed)
+        checkServiceState()
+
         if (hasUsageStatsPermission()) {
             checkDataAlerts()
             checkAlertsHandler.removeCallbacks(checkAlertsRunnable)
             checkAlertsHandler.post(checkAlertsRunnable)
         }
     }
+
 
     private fun syncWifiPermissionState() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -351,7 +364,11 @@ class MainActivity : AppCompatActivity() {
                 var totalMobileMonth = 0L
                 var totalWifiMonth = 0L
 
-                for (i in 0 until 30) {
+                // BUG FIX: Ensure we fetch enough days to cover the 1st of the current month.
+                // If today is the 31st, we need 31 days. If today is the 5th, we still want at least 30 days history.
+                val daysToFetch = kotlin.math.max(30, calendar.get(Calendar.DAY_OF_MONTH))
+
+                for (i in 0 until daysToFetch) {
                     try {
                         calendar.set(Calendar.HOUR_OF_DAY, 0)
                         calendar.set(Calendar.MINUTE, 0)
@@ -615,6 +632,5 @@ class MainActivity : AppCompatActivity() {
         val openCount = prefs.getInt(Constants.PREF_APP_OPEN_COUNT, 0) + 1
         prefs.edit { putInt(Constants.PREF_APP_OPEN_COUNT, openCount) }
     }
-
-
 }
+
