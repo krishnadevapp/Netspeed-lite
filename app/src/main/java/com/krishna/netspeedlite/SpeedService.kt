@@ -41,6 +41,8 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.sync.Mutex
 
 class SpeedService : Service() {
 
@@ -72,6 +74,12 @@ class SpeedService : Service() {
 
     // Optimization: Cache last notification content to avoid redundant updates
     private var lastNotificationContent: String = ""
+
+    // Fix Race Condition: Mutex to ensure only one update runs at a time
+    private val updateMutex = Mutex()
+    
+    // Fix Concurrent Alerts: Atomic lock for alert checking
+    private val isCheckingAlerts = AtomicBoolean(false)
 
     // ... (Rest of variables) ...
 
@@ -129,13 +137,10 @@ class SpeedService : Service() {
             // This might be too slow for high speed downloads.
             // Let's ensure we check frequently enough.
             if (isScreenOn) {
-                 // Optimization: Removed redundant checkDataAlerts() every second.
-                 // We rely on the "Smart Trigger" in updateNotificationDataSuspend() to check
-                 // when usage thresholds are crossed.
-                 
-                 // Fallback Safety Net: Force a check every 5 minutes (300 ticks) just in case
+                 // FIX: Check alerts every 30 seconds (30 ticks) instead of 5 minutes
+                 // This ensures reasonably quick detection while not being too battery intensive
                  tickCount++
-                 if (tickCount % 300 == 0) {
+                 if (tickCount % 30 == 0) {
                      checkDataAlerts()
                  }
                  
@@ -304,94 +309,93 @@ class SpeedService : Service() {
         if (!isAlertEnabled) {
             return
         }
-
-        serviceScope.launch {
-            try {
-                val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
-                if (limitMb <= 0f) {
-                    return@launch
-                }
-
-                val todayStr = try {
-                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                } catch (e: Exception) {
-                    ""
-                }
-                
-                if (todayStr.isEmpty()) {
-                    return@launch
-                }
-
-                val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
-
-                // UNIFIED DAY RESET: Single atomic check for new day
-                // Fixes race condition between lastDayTracker and lastChecked
-                if (todayStr != lastChecked || todayStr != lastDayTracker) {
-                    prefs.edit {
-                        putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
-                        putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                        putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+        
+        // Fix Concurrent Alerts: Only allow one check at a time
+        if (isCheckingAlerts.compareAndSet(false, true)) {
+            serviceScope.launch {
+                try {
+                    val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
+                    if (limitMb <= 0f) {
+                        return@launch
                     }
-                    lastDayTracker = todayStr
-                }
 
-                val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                    val todayStr = try {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                    } catch (e: Exception) {
+                        ""
+                    }
+                    
+                    if (todayStr.isEmpty()) {
+                        return@launch
+                    }
 
-                if (alert80 && alert100) {
-                    // Both alerts already triggered today
-                    return@launch
-                }
+                    val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
 
-                val limitBytes = (limitMb.toDouble() * 1024.0 * 1024.0).toLong()
-                if (limitBytes <= 0) {
-                    return@launch
-                }
+                    // UNIFIED DAY RESET: Single atomic check for new day
+                    // Fixes race condition between lastDayTracker and lastChecked
+                    if (todayStr != lastChecked || todayStr != lastDayTracker) {
+                        prefs.edit {
+                            putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
+                            putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                            putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                        }
+                        lastDayTracker = todayStr
+                    }
 
-                // BUG FIX: Use the corrected function that queries midnight to NOW
-                // instead of midnight to 23:59:59 (future time)
-                val hasPermission = hasUsageStatsPermission()
-                val mobileUsage = if (hasPermission) {
-                    // FIXED: Use getTodayMobileUsageUntilNow() - queries correct time range
-                    NetworkUsageHelper.getTodayMobileUsageUntilNow(applicationContext)
-                } else {
-                    // Fallback to manual tracking (less accurate but still works)
-                    val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-                    prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
-                }
+                    val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                    val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
 
-                // BUG FIX: Removed double-counting accumulator logic
-                // The system stats from NetworkStatsManager is the source of truth.
-                // approxMobileUsage was causing inflated readings because it accumulated
-                // bytes that were already counted by the system.
-                // 
-                // For real-time alerts during active downloads, we still check in
-                // updateNotificationDataSuspend() which triggers checkDataAlerts()
-                // when estimated percentage crosses thresholds.
-                
-                val percentage = if (limitBytes > 0) {
-                    (mobileUsage.toDouble() / limitBytes.toDouble()) * 100
-                } else {
-                    0.0
-                }
+                    if (alert80 && alert100) {
+                        // Both alerts already triggered today
+                        return@launch
+                    }
 
-                if (percentage >= 100 && !alert100) {
-                    sendAlertNotification(
-                        "Daily data limit reached!", 
-                        "You've used ${formatUsage(mobileUsage)} of your ${formatUsage(limitBytes)} daily limit."
-                    )
-                    prefs.edit { putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true) }
-                } else if (percentage >= 80 && !alert80 && !alert100) {
-                    // BUG FIX: Show actual percentage instead of static "80%"
-                    val actualPercentage = percentage.toInt()
-                    sendAlertNotification(
-                        "Data usage warning", 
-                        "You've used ${formatUsage(mobileUsage)} ($actualPercentage%) of your ${formatUsage(limitBytes)} daily limit."
-                    )
-                    prefs.edit { putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true) }
+                    val limitBytes = (limitMb.toDouble() * 1024.0 * 1024.0).toLong()
+                    if (limitBytes <= 0) {
+                        return@launch
+                    }
+
+                    // BUG FIX: Use the corrected function that queries midnight to NOW
+                    // instead of midnight to 23:59:59 (future time)
+                    val hasPermission = hasUsageStatsPermission()
+                    val mobileUsage = if (hasPermission) {
+                        // FIXED: Use getTodayMobileUsageUntilNow() - queries correct time range
+                        NetworkUsageHelper.getTodayMobileUsageUntilNow(applicationContext)
+                    } else {
+                        // Fallback to manual tracking (less accurate but still works)
+                        val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+                        prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
+                    }
+
+                    // BUG FIX: Removed double-counting accumulator logic
+                    // The system stats from NetworkStatsManager is the source of truth.
+                    
+                    val percentage = if (limitBytes > 0) {
+                        (mobileUsage.toDouble() / limitBytes.toDouble()) * 100
+                    } else {
+                        0.0
+                    }
+
+                    if (percentage >= 100 && !alert100) {
+                        sendAlertNotification(
+                            "Daily data limit reached!", 
+                            "You've used ${formatUsage(mobileUsage)} of your ${formatUsage(limitBytes)} daily limit."
+                        )
+                        prefs.edit { putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true) }
+                    } else if (percentage >= 80 && !alert80 && !alert100) {
+                        // BUG FIX: Show actual percentage instead of static "80%"
+                        val actualPercentage = percentage.toInt()
+                        sendAlertNotification(
+                            "Data usage warning", 
+                            "You've used ${formatUsage(mobileUsage)} ($actualPercentage%) of your ${formatUsage(limitBytes)} daily limit."
+                        )
+                        prefs.edit { putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true) }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("SpeedService", "Error in checkDataAlerts", e)
+                } finally {
+                    isCheckingAlerts.set(false)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("SpeedService", "Error in checkDataAlerts", e)
             }
         }
     }
@@ -441,7 +445,13 @@ class SpeedService : Service() {
     }
 
     // Refactored to be a suspend function to run network operations on a background thread
-    private suspend fun updateNotificationDataSuspend() = withContext(Dispatchers.IO) {
+    private suspend fun updateNotificationDataSuspend() {
+        // Fix Race Condition: Drop this update if another is already in progress.
+        // This prevents stacking of updates which causes double-counting of data usage.
+        if (!updateMutex.tryLock()) return
+        
+        try {
+            withContext(Dispatchers.IO) {
         val rx = TrafficStats.getTotalRxBytes()
         val tx = TrafficStats.getTotalTxBytes()
 
@@ -626,17 +636,33 @@ class SpeedService : Service() {
                 }
             }
         } else {
-             // Fallback: Use manually tracked data
-             val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-             val mobile = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
-             val wifi = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
-             details.append("Mobile: ${formatUsage(mobile)} | WiFi: ${formatUsage(wifi)}")
-             
-             // BUG FIX #2: Track using VPN-corrected displayBytes instead of raw deltas
-             // The raw rxDelta+txDelta includes VPN double-counting, displayBytes is corrected
-             if (displayBytes > 0) {
-                  trackManualUsage(displayBytes, todayKey)
-             }
+              // Fallback: Use manually tracked data
+              val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+              val mobile = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
+              val wifi = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
+              details.append("Mobile: ${formatUsage(mobile)} | WiFi: ${formatUsage(wifi)}")
+              
+              // BUG FIX #2: Track using VPN-corrected displayBytes instead of raw deltas
+              // The raw rxDelta+txDelta includes VPN double-counting, displayBytes is corrected
+              if (displayBytes > 0) {
+                   trackManualUsage(displayBytes, todayKey)
+              }
+              
+              // FIX: Real-time alert check for fallback path (no permission)
+              val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
+              val limitBytes = if (limitMb > 0f) (limitMb * 1024 * 1024).toLong() else 0L
+              if (limitBytes > 0 && mobile > 0) {
+                  val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
+                  if (isAlertEnabled) {
+                      val estPercentage = (mobile.toDouble() / limitBytes.toDouble()) * 100
+                      val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
+                      val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
+                      
+                      if ((estPercentage >= 80 && !alert80) || (estPercentage >= 100 && !alert100)) {
+                          checkDataAlerts()
+                      }
+                  }
+              }
         }
 
         val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
@@ -723,7 +749,11 @@ class SpeedService : Service() {
                 android.util.Log.e("SpeedService", "Error updating notification", e)
             }
         }
+    } 
+    } finally {
+        updateMutex.unlock()
     }
+  }
 
     // --- Helpers ---
 

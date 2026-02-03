@@ -64,13 +64,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val checkAlertsHandler = Handler(Looper.getMainLooper())
-    private val checkAlertsRunnable = object : Runnable {
-        override fun run() {
-            checkDataAlerts()
-            checkAlertsHandler.postDelayed(this, Constants.ALERT_CHECK_INTERVAL_MS)
-        }
-    }
+    // REMOVED: checkAlertsHandler and checkAlertsRunnable
+    // SpeedService now handles ALL alert logic to prevent race conditions.
 
     // Store battery optimization runnable to prevent memory leak
     private var batteryOptRunnable: Runnable? = null
@@ -203,12 +198,8 @@ class MainActivity : AppCompatActivity() {
 
         // Ensure service is running when app is open (fixes issues if service was killed)
         checkServiceState()
-
-        if (hasUsageStatsPermission()) {
-            checkDataAlerts()
-            checkAlertsHandler.removeCallbacks(checkAlertsRunnable)
-            checkAlertsHandler.post(checkAlertsRunnable)
-        }
+        
+        // SpeedService now handles all alert checking in the background.
     }
 
 
@@ -228,7 +219,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        checkAlertsHandler.removeCallbacks(checkAlertsRunnable)
+        // SpeedService handles alert checking, no handler to remove here.
 
         // Stop auto-refresh to save battery
         refreshHandler.removeCallbacks(refreshRunnable)
@@ -241,7 +232,6 @@ class MainActivity : AppCompatActivity() {
         batteryOptRunnable = null
 
         // Fix memory leak: Clean up all handler callbacks
-        checkAlertsHandler.removeCallbacksAndMessages(null)
         refreshHandler.removeCallbacksAndMessages(null)
     }
 
@@ -480,68 +470,11 @@ class MainActivity : AppCompatActivity() {
 
     // Fix race condition: Only check alerts in MainActivity when app is in foreground
     // SpeedService handles background alerts, so we skip here to avoid duplicates
+    // SpeedService handles all alert logic now to prevent race conditions.
+    // This function is kept empty to satisfy any lingering references or callbacks,
+    // though the runnable has been removed.
     private fun checkDataAlerts() {
-        val isAlertEnabled = prefs.getBoolean(Constants.PREF_DAILY_LIMIT_ENABLED, false)
-        if (!isAlertEnabled) return // FIX: Never check if explicitly disabled
-
-        // Skip alert checking in MainActivity - SpeedService handles it to avoid race conditions
-        // This prevents duplicate notifications when both MainActivity and SpeedService check simultaneously
-        // MainActivity will only show alerts if SpeedService is not running
-        val showSpeed = prefs.getBoolean(Constants.PREF_SHOW_SPEED, true)
-        
-        // If SpeedService is running (either speed or alerts enabled), let it handle alerts
-        if (showSpeed || isAlertEnabled) {
-            return
-        }
-
-        // This code only runs if SpeedService is NOT running (both showSpeed and isAlertEnabled are false)
-        // Since we explicitly check !isAlertEnabled above, this block is now effectively dead code
-        // safely preventing the Zombie bug.
-        
-        val limitMb = prefs.getFloat(Constants.PREF_DAILY_LIMIT_MB, 0f)
-        if (limitMb <= 0f) return
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            val todayUsageBytes = getTodayMobileUsage()
-            val usageMb = todayUsageBytes / (1024f * 1024f)
-
-            val todayStr = try {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error formatting date", e)
-                ""
-            }
-            val lastChecked = prefs.getString(Constants.PREF_LAST_ALERT_DATE, "")
-
-            if (todayStr.isNotEmpty() && todayStr != lastChecked) {
-                prefs.edit {
-                    putString(Constants.PREF_LAST_ALERT_DATE, todayStr)
-                    putBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-                    putBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-                }
-            }
-
-            val alert80 = prefs.getBoolean(Constants.PREF_ALERT_80_TRIGGERED, false)
-            val alert100 = prefs.getBoolean(Constants.PREF_ALERT_100_TRIGGERED, false)
-
-            withContext(Dispatchers.Main) {
-                if (!alert100 && usageMb >= limitMb) {
-                    val message = getString(
-                        R.string.limit_reached_message,
-                        String.format(Locale.US, "%.0f", limitMb)
-                    )
-                    showNotification(getString(R.string.daily_limit_reached), message)
-                    prefs.edit { putBoolean(Constants.PREF_ALERT_100_TRIGGERED, true) }
-                } else if (!alert80 && !alert100 && usageMb >= (limitMb * 0.8)) {
-                    val message = getString(
-                        R.string.limit_warning_message,
-                        String.format(Locale.US, "%.1f", usageMb)
-                    )
-                    showNotification(getString(R.string.daily_limit_warning), message)
-                    prefs.edit { putBoolean(Constants.PREF_ALERT_80_TRIGGERED, true) }
-                }
-            }
-        }
+        // Validation moved to SpeedService.kt for robustness.
     }
 
     private fun showNotification(title: String, message: String) {
