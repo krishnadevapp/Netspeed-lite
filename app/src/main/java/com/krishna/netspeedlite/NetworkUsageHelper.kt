@@ -136,8 +136,19 @@ object NetworkUsageHelper {
                 if (bucketEnd <= start || bucketStart >= end) continue
 
                 // Calculate overlap
-                val overlapStart = if (bucketStart < start) start else bucketStart
-                val overlapEnd = if (bucketEnd > end) end else bucketEnd
+                var overlapStart = if (bucketStart < start) start else bucketStart
+                var overlapEnd = if (bucketEnd > end) end else bucketEnd
+
+                // FIX: If the bucket extends into the future (future > end), DO NOT truncate it.
+                // Logic: Usage recorded in this bucket MUST have happened in the past (before 'end'),
+                // because we can't record future usage.
+                // So if bucketEnd is in the future, we treat the "valid data end" as the bucketEnd itself
+                // (or effectively, we don't reduce the count based on the future duration).
+                if (bucketEnd > end && bucketEnd > System.currentTimeMillis()) {
+                    // This is a "Currently Active" bucket extending into the future.
+                    // Don't reduce data just because the bucket hasn't finished yet.
+                    overlapEnd = bucketEnd
+                }
 
                 if (overlapEnd <= overlapStart) continue
 

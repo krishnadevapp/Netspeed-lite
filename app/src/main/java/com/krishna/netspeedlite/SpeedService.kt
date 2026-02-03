@@ -47,11 +47,11 @@ import kotlinx.coroutines.sync.Mutex
 class SpeedService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private var lastRx = 0L
-    private var lastTx = 0L
+    private var lastRx = -1L
+    private var lastTx = -1L
     // Fix VPN Double-Counting: Track mobile separate from total (which might include VPN tun)
-    private var lastMobileRx = 0L
-    private var lastMobileTx = 0L
+    private var lastMobileRx = -1L
+    private var lastMobileTx = -1L
     private var tickCount = 0
 
     private var lastNetworkStatsUpdate = 0L
@@ -477,7 +477,11 @@ class SpeedService : Service() {
             tx - lastTx
         }
 
-        val totalBytes = rxDelta + txDelta
+        // Sanity Check: If delta is impossible (> 2GB/s), ignore it.
+        // This prevents massive spikes if stats suddenly jump (e.g. 0 -> 26GB) due to OS glitch
+        val saneRxDelta = if (rxDelta > 2_000_000_000L) 0L else rxDelta
+        val saneTxDelta = if (txDelta > 2_000_000_000L) 0L else txDelta
+        val totalBytes = saneRxDelta + saneTxDelta
 
         // Always update baseline for next tick (unless unavailable)
         // This is crucial: if rx < lastRx (reset), we MUST update lastRx to the new smaller rx
@@ -504,8 +508,11 @@ class SpeedService : Service() {
         } else {
              mobileTx - lastMobileTx
         }
-        
-        val totalMobileBytes = mobileRxDelta + mobileTxDelta
+
+        // Sanity Check for Mobile
+        val saneMobileRxDelta = if (mobileRxDelta > 2_000_000_000L) 0L else mobileRxDelta
+        val saneMobileTxDelta = if (mobileTxDelta > 2_000_000_000L) 0L else mobileTxDelta
+        val totalMobileBytes = saneMobileRxDelta + saneMobileTxDelta
         
         // Update baseline
         if (mobileRx != -1L) lastMobileRx = mobileRx
