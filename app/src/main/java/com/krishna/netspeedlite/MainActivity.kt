@@ -376,20 +376,10 @@ class MainActivity : AppCompatActivity() {
                         val endTime = calendar.timeInMillis
 
                         val (m, w) = if (hasUsageStatsPermission()) {
-                            val (mob, wifi) = NetworkUsageHelper.getUsageInRange(applicationContext, startTime, endTime)
-                            
-                            // SYNC: Persist system data to manual cache
-                            try {
-                                val dateKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date(startTime))
-                                prefs.edit { 
-                                    putLong(Constants.PREF_MANUAL_MOBILE_PREFIX + dateKey, mob)
-                                    putLong(Constants.PREF_MANUAL_WIFI_PREFIX + dateKey, wifi)
-                                }
-                            } catch (e: Exception) {
-                                Log.e("MainActivity", "Error syncing data to cache", e)
-                            }
-                            
-                            Pair(mob, wifi)
+                            // BUG FIX: Removed heavy IO ops (prefs.edit) from this hot loop.
+                            // Syncing manual cache every 5s for 30 days is excessive.
+                            // SpeedService handles manual tracking reliability now.
+                            NetworkUsageHelper.getUsageInRange(applicationContext, startTime, endTime)
                         } else {
                             val manualData = fetchManualData(calendar)
                             Pair(manualData.mobileBytes, manualData.wifiBytes)
@@ -397,8 +387,7 @@ class MainActivity : AppCompatActivity() {
                         val mobile = m
                         val wifi = w
 
-                        // Add to usage list only if it's part of the current month
-                        // Add all days to usage list (Show Last 30 Days)
+                        // Add all days to usage list (Show History)
                         usageList.add(DailyUsage(startTime, mobile, wifi, mobile + wifi))
 
                         // Only accumulate "This Month" if valid
@@ -407,9 +396,11 @@ class MainActivity : AppCompatActivity() {
                             totalWifiMonth += wifi
                         }
 
-                        // Always add to 30-day total
-                        totalMobile30 += mobile
-                        totalWifi30 += wifi
+                        // BUG FIX: Strictly sum only the last 30 days for the Footer Stats
+                        if (i < 30) {
+                            totalMobile30 += mobile
+                            totalWifi30 += wifi
+                        }
 
                         if (i < 7) {
                             last7DaysMobile += mobile

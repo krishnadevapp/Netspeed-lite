@@ -210,7 +210,37 @@ class SpeedService : Service() {
                                         // Calculate WiFi Sleep Delta (Total - Mobile)
                                         // Handle VPN heuristic if needed, but for sleep data we can keep it simple:
                                         // WiFi = Total - Mobile (safely)
-                                        val totalSleepWifi = if (totalSleepBytes > totalSleepMobile) totalSleepBytes - totalSleepMobile else 0L
+                                        var totalSleepWifi = if (totalSleepBytes > totalSleepMobile) totalSleepBytes - totalSleepMobile else 0L
+
+                                        // BUG FIX: Filter Phantom Wi-Fi Usage (VPN/Loopback Noise)
+                                        // "Total - Mobile" often includes VPN overhead or local internal traffic.
+                                        // If Mobile was active, and Wi-Fi is NOT connected now, it's highly likely this "Wi-Fi" usage 
+                                        // is just VPN overhead or noise.
+                                        val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                                        val activeNetwork = cm?.activeNetwork
+                                        val caps = cm?.getNetworkCapabilities(activeNetwork)
+                                        val isWifiNow = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+
+                                        if (totalSleepMobile > 0) {
+                                            // 1. Mobile was active during sleep.
+                                            if (!isWifiNow) {
+                                                // If we are NOT on Wi-Fi now, assume the "Wi-Fi" delta is just VPN/Noise over Mobile.
+                                                // Prevents "2MB Wi-Fi usage" when using Mobile Data only.
+                                                totalSleepWifi = 0L
+                                            } else {
+                                                 // Mobile Active + Wi-Fi Connected Now. 
+                                                 // Could be switching networks or VPN. 
+                                                 // If safe logic: if Wifi usage ~= Mobile usage, maybe reduce it? 
+                                                 // For now, let's keep it but monitor.
+                                            }
+                                        } else {
+                                            // 2. Mobile was 0. All usage is "Wi-Fi" (Total).
+                                            // If NOT on Wi-Fi now, and usage is small (< 10MB), assume it's system noise.
+                                            // (If usage is large, e.g. 1GB, user probably downloaded on Wi-Fi then turned it off).
+                                            if (!isWifiNow && totalSleepWifi < 10 * 1024 * 1024) {
+                                                totalSleepWifi = 0L
+                                            }
+                                        }
 
                                         // Save Sleep Data if we are in Manual Mode (No Permission)
                                         if (!hasUsageStatsPermission() && (totalSleepMobile > 0 || totalSleepWifi > 0)) {
@@ -291,6 +321,33 @@ class SpeedService : Service() {
         val initialMobileTx = TrafficStats.getMobileTxBytes()
         lastMobileRx = if (initialMobileRx == -1L) 0L else initialMobileRx
         lastMobileTx = if (initialMobileTx == -1L) 0L else initialMobileTx
+
+        // BUG FIX: Gap Filling for Manual Tracking
+        // If the service was killed and restarted, TrafficStats continued to increase.
+        // We need to capture the difference between "Last Known Value" (before kill) and "Current Value" (on restart)
+        // ensuring we don't lose usage tracking when the service restarts.
+        if (initialMobileRx != -1L) {
+            val savedRx = prefs.getLong("last_known_mobile_rx", -1L)
+            val savedTx = prefs.getLong("last_known_mobile_tx", -1L)
+            
+            if (savedRx != -1L && savedTx != -1L) {
+                 val gapRx = if (lastMobileRx > savedRx) lastMobileRx - savedRx else 0L
+                 val gapTx = if (lastMobileTx > savedTx) lastMobileTx - savedTx else 0L
+                 
+                 // Sanity check: If gap is massive (> 5GB) or negative (reboot), ignore it.
+                 // Otherwise, add it to the manual tracker.
+                 if ((gapRx + gapTx) > 0 && (gapRx + gapTx) < 5_000_000_000L) {
+                     val todayKey = try {
+                        SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+                     } catch (e: Exception) { "" }
+                     
+                     if (todayKey.isNotEmpty()) {
+                         trackManualUsage(gapRx + gapTx, 0L, todayKey)
+                         android.util.Log.d("SpeedService", "Restored missing manual usage: ${gapRx + gapTx} bytes")
+                     }
+                 }
+            }
+        }
 
         val notification = buildNotification("Initializing...", "0", "KB/s", "Starting...")
 
@@ -566,8 +623,16 @@ class SpeedService : Service() {
         val totalMobileBytes = saneMobileRxDelta + saneMobileTxDelta
         
         // Update baseline
-        if (mobileRx != -1L) lastMobileRx = mobileRx
-        if (mobileTx != -1L) lastMobileTx = mobileTx
+        if (mobileRx != -1L) {
+             lastMobileRx = mobileRx
+             // Save state for Gap Filling (Crash Recovery)
+             prefs.edit { putLong("last_known_mobile_rx", mobileRx) }
+        }
+        if (mobileTx != -1L) {
+             lastMobileTx = mobileTx
+             // Save state for Gap Filling (Crash Recovery)
+             prefs.edit { putLong("last_known_mobile_tx", mobileTx) }
+        }
 
         // Check Active Network Type
         val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
