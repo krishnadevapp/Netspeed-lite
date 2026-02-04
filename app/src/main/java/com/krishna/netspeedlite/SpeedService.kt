@@ -166,34 +166,85 @@ class SpeedService : Service() {
                 Intent.ACTION_SCREEN_ON -> {
                     isScreenOn = true
                     
-                    // BUG FIX: Force baseline refresh on screen wake-up
-                    // This prevents stale "4GB" data from showing after overnight sleep
-                    lastUsageDbQueryTime = 0L // Force immediate DB query
-                    
-                    // BUG FIX: Reset accumulators to prevent stale data accumulation
-                    // Usage tracked while screen was off may be inaccurate
-                    sessionMobileAccumulator = 0L
-                    sessionWifiAccumulator = 0L
-                    
-                    // BUG FIX: Reset TrafficStats baselines to prevent speed spikes
-                    // After long sleep, lastRx/lastTx are very old - resync to current values
-                    val currentRx = TrafficStats.getTotalRxBytes()
-                    val currentTx = TrafficStats.getTotalTxBytes()
-                    lastRx = if (currentRx == -1L) lastRx else currentRx
-                    lastTx = if (currentTx == -1L) lastTx else currentTx
-                    
-                    val currentMobileRx = TrafficStats.getMobileRxBytes()
-                    val currentMobileTx = TrafficStats.getMobileTxBytes()
-                    lastMobileRx = if (currentMobileRx == -1L) lastMobileRx else currentMobileRx
-                    lastMobileTx = if (currentMobileTx == -1L) lastMobileTx else currentMobileTx
-                    
-                    // Reset timestamp for accurate speed calculation
-                    lastUpdateTimestamp = System.currentTimeMillis()
-                    
-                    // Clear notification cache to force immediate update
-                    lastNotificationContent = ""
-                    
-                    startUpdates() // Kickstart immediately to refresh UI
+                    // BUG FIX: Synchronization
+                    // Move logic to background thread and lock mutex to prevent race with updateNotificationDataSuspend
+                    serviceScope.launch {
+                        updateMutex.lock()
+                        try {
+                            // BUG FIX: Force baseline refresh on screen wake-up
+                            // This prevents stale "4GB" data from showing after overnight sleep
+                            lastUsageDbQueryTime = 0L // Force immediate DB query
+                            
+                            // BUG FIX: Reset accumulators to prevent stale data accumulation
+                            // Usage tracked while screen was off may be inaccurate
+                            sessionMobileAccumulator = 0L
+                            sessionWifiAccumulator = 0L
+                            
+                            // BUG FIX: Capture usage that happened while screen was OFF (Sleep Data)
+                            // Before we reset the baselines to 'current', we must record the difference
+                            // between 'current' and the old 'last' values.
+                            val currentRx = TrafficStats.getTotalRxBytes()
+                            val currentTx = TrafficStats.getTotalTxBytes()
+                            val currentMobileRx = TrafficStats.getMobileRxBytes()
+                            val currentMobileTx = TrafficStats.getMobileTxBytes()
+
+                            if (lastRx != -1L && currentRx != -1L && lastTx != -1L && currentTx != -1L) {
+                                try {
+                                    val sleepRxDelta = if (currentRx >= lastRx) currentRx - lastRx else 0L
+                                    val sleepTxDelta = if (currentTx >= lastTx) currentTx - lastTx else 0L
+                                    // Sanity check: If sleep contained massive spike (>2GB), ignore it to be safe
+                                    // But realistic sleep usage (background updates) should be counted.
+                                    if (sleepRxDelta < 2_000_000_000L && sleepTxDelta < 2_000_000_000L) {
+                                        val totalSleepBytes = sleepRxDelta + sleepTxDelta
+                                        
+                                        // Calculate Mobile Sleep Delta
+                                        val sleepMobileRxDelta = if (currentMobileRx >= lastMobileRx && 
+                                            lastMobileRx != -1L && currentMobileRx != -1L) currentMobileRx - lastMobileRx else 0L
+                                        val sleepMobileTxDelta = if (currentMobileTx >= lastMobileTx && 
+                                            lastMobileTx != -1L && currentMobileTx != -1L) currentMobileTx - lastMobileTx else 0L
+                                        
+                                        val totalSleepMobile = if (sleepMobileRxDelta < 2_000_000_000L && sleepMobileTxDelta < 2_000_000_000L) {
+                                            sleepMobileRxDelta + sleepMobileTxDelta
+                                        } else 0L
+                                        
+                                        // Calculate WiFi Sleep Delta (Total - Mobile)
+                                        // Handle VPN heuristic if needed, but for sleep data we can keep it simple:
+                                        // WiFi = Total - Mobile (safely)
+                                        val totalSleepWifi = if (totalSleepBytes > totalSleepMobile) totalSleepBytes - totalSleepMobile else 0L
+
+                                        // Save Sleep Data if we are in Manual Mode (No Permission)
+                                        if (!hasUsageStatsPermission() && (totalSleepMobile > 0 || totalSleepWifi > 0)) {
+                                            val todayKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+                                            trackManualUsage(totalSleepMobile, totalSleepWifi, todayKey)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    // Safely ignore errors during awake calculation
+                                }
+                            }
+
+                            // BUG FIX: Reset TrafficStats baselines to prevent speed spikes
+                            // After long sleep, lastRx/lastTx are very old - resync to current values
+                            lastRx = if (currentRx == -1L) lastRx else currentRx
+                            lastTx = if (currentTx == -1L) lastTx else currentTx
+                            
+                            lastMobileRx = if (currentMobileRx == -1L) lastMobileRx else currentMobileRx
+                            lastMobileTx = if (currentMobileTx == -1L) lastMobileTx else currentMobileTx
+                            
+                            // Reset timestamp for accurate speed calculation
+                            lastUpdateTimestamp = System.currentTimeMillis()
+                            
+                            // Clear notification cache to force immediate update
+                            lastNotificationContent = ""
+                            
+                            // Post startUpdates back to main thread (handler is attached to Main Looper)
+                            withContext(Dispatchers.Main) {
+                                startUpdates() 
+                            }
+                        } finally {
+                            updateMutex.unlock()
+                        }
+                    }
                 }
             }
         }
@@ -540,13 +591,13 @@ class SpeedService : Service() {
         
         if (isMobile) {
             // Precise Mobile Speed (ignores VPN overhead)
-            displayRx = mobileRxDelta
-            displayTx = mobileTxDelta
+            displayRx = saneMobileRxDelta
+            displayTx = saneMobileTxDelta
         } else {
             // Wifi / Ethernet
             // Calculate Non-Mobile Traffic
-            var wifiRx = if (rxDelta > mobileRxDelta) rxDelta - mobileRxDelta else 0L
-            var wifiTx = if (txDelta > mobileTxDelta) txDelta - mobileTxDelta else 0L
+            var wifiRx = if (saneRxDelta > saneMobileRxDelta) saneRxDelta - saneMobileRxDelta else 0L
+            var wifiTx = if (saneTxDelta > saneMobileTxDelta) saneTxDelta - saneMobileTxDelta else 0L
             
             if (isVpn) {
                 // Heuristic: Remove double counting (Physical + Tun) -> Divide by 2
@@ -652,7 +703,9 @@ class SpeedService : Service() {
               // BUG FIX #2: Track using VPN-corrected displayBytes instead of raw deltas
               // The raw rxDelta+txDelta includes VPN double-counting, displayBytes is corrected
               if (displayBytes > 0) {
-                   trackManualUsage(displayBytes, todayKey)
+                   val mobileBytesToAdd = if (isMobile) displayBytes else 0L
+                   val wifiBytesToAdd = if (isWifi) displayBytes else 0L
+                   trackManualUsage(mobileBytesToAdd, wifiBytesToAdd, todayKey)
               }
               
               // FIX: Real-time alert check for fallback path (no permission)
@@ -882,24 +935,19 @@ class SpeedService : Service() {
         return PendingIntent.getActivity(this, 0, intent, flags)
     }
 
-    private fun trackManualUsage(bytes: Long, todayKey: String) {
+    private fun trackManualUsage(mobileBytes: Long, wifiBytes: Long, todayKey: String) {
         try {
-            val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = cm.activeNetwork
-            val caps = cm.getNetworkCapabilities(activeNetwork) ?: return
-            
-            val isWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-            val isMobile = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-            
-            if (isMobile) {
+            if (mobileBytes > 0) {
                 synchronized(prefs) {
                     val current = prefs.getLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, 0L)
-                    prefs.edit { putLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, current + bytes) }
+                    prefs.edit { putLong(Constants.PREF_MANUAL_MOBILE_PREFIX + todayKey, current + mobileBytes) }
                 }
-            } else if (isWifi) {
+            }
+            
+            if (wifiBytes > 0) {
                 synchronized(prefs) {
                     val current = prefs.getLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, 0L)
-                    prefs.edit { putLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, current + bytes) }
+                    prefs.edit { putLong(Constants.PREF_MANUAL_WIFI_PREFIX + todayKey, current + wifiBytes) }
                 }
             }
         } catch (e: Exception) {
